@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ event['name'] }} · Painel{% endblock %}
+
+{% block content %}
+<section class="section">
+  <header class="section-head">
+    <div>
+      <p class="eyebrow">Evento</p>
+      <h1>{{ event['name'] }}</h1>
+      <p class="muted">Página pública: <a href="{{ url_for('public_event', slug=event['slug']) }}" target="_blank" rel="noopener">/evento/{{ event['slug'] }}</a></p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('admin_index') }}">← Todos os eventos</a>
+  </header>
+
+  {% if not face_available %}
+    <div class="alert alert-warning">
+      <strong>Motor de reconhecimento facial indisponível.</strong>
+      <p>{{ face_error or 'Verifique a instalação do InsightFace (pip install -r requirements.txt).' }}</p>
+      <p>As fotos enviadas ficam salvas como “aguardando” e podem ser reprocessadas depois.</p>
+    </div>
+  {% endif %}
+
+  <div class="stat-cards" id="stat-cards">
+    <div class="stat-card"><span class="stat-value" data-stat="total">{{ stats.total }}</span><span class="stat-label">Fotos</span></div>
+    <div class="stat-card"><span class="stat-value" data-stat="processed">{{ stats.processed }}</span><span class="stat-label">Processadas</span></div>
+    <div class="stat-card"><span class="stat-value" data-stat="no_faces">{{ stats.no_faces }}</span><span class="stat-label">Sem rostos</span></div>
+    <div class="stat-card"><span class="stat-value" data-stat="errors">{{ stats.errors }}</span><span class="stat-label">Com erro</span></div>
+    <div class="stat-card accent"><span class="stat-value" data-stat="faces">{{ stats.faces }}</span><span class="stat-label">Rostos detectados</span></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="uploader"
+       id="uploader"
+       data-upload-url="{{ url_for('admin_upload', event_id=event['id']) }}">
+    <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Arraste fotos ou clique para selecionar">
+      <div class="dropzone-inner">
+        <span class="dropzone-icon" aria-hidden="true">⬆</span>
+        <p class="dropzone-title">Arraste suas fotos aqui</p>
+        <p class="dropzone-or">ou</p>
+        <span class="btn btn-primary">Selecionar arquivos</span>
+        <p class="dropzone-hint">JPG, JPEG, PNG, WEBP, HEIC (iPhone), NEF/RAW ou ZIP com várias fotos</p>
+      </div>
+      <input type="file" id="file-input" name="files"
+             accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.avif,.nef,.nrw,.cr2,.cr3,.arw,.dng,.orf,.raf,.rw2,.pef,.srw,.zip,image/*,application/zip"
+             multiple hidden>
+    </div>
+
+    <div class="progress" id="upload-progress" hidden>
+      <div class="progress-head">
+        <span id="progress-label">Processando 0 / 0 fotos</span>
+        <span id="progress-percent">0%</span>
+      </div>
+      <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+      <p class="progress-detail" id="progress-detail"></p>
+      <ul class="upload-errors" id="upload-errors"></ul>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <header class="section-head">
+    <h2>Fotos do evento</h2>
+    <span class="badge" id="photo-count">{{ photos|length }} foto{{ '' if photos|length == 1 else 's' }}</span>
+  </header>
+
+  <div class="photo-grid"
+       id="photo-grid"
+       data-delete-url="{{ url_for('admin_delete_photo', photo_id=0) }}"
+       data-reprocess-url="{{ url_for('admin_reprocess_photo', photo_id=0) }}">
+
+    {% for photo in photos %}
+      <figure class="photo-card" data-photo-id="{{ photo['id'] }}">
+        <button class="photo-thumb" type="button"
+                data-full="{{ storage_url(photo['original_path']) }}"
+                data-caption="{{ photo['filename'] }}">
+          {% if photo['thumbnail_path'] %}
+            <img src="{{ storage_url(photo['thumbnail_path']) }}" alt="{{ photo['filename'] }}" loading="lazy">
+          {% else %}
+            <span class="thumb-fallback">sem prévia</span>
+          {% endif %}
+        </button>
+        <figcaption class="photo-meta">
+          <span class="status status-{{ photo['status'] }}">{{ status_labels.get(photo['status'], photo['status']) }}</span>
+          <span class="faces-count">{{ photo['faces_count'] }} rosto{{ '' if photo['faces_count'] == 1 else 's' }}</span>
+          {% if photo['raw_path'] %}<span class="raw-tag" title="Arquivo RAW original preservado">RAW</span>{% endif %}
+        </figcaption>
+        <div class="photo-actions">
+          {% if photo['raw_path'] %}
+            <a class="icon-btn" href="{{ storage_url(photo['raw_path']) }}" download title="Baixar o RAW original">⤓</a>
+          {% endif %}
+          <button class="icon-btn js-reprocess-photo" type="button" data-photo-id="{{ photo['id'] }}" title="Reprocessar">↻</button>
+          <button class="icon-btn icon-btn-danger js-delete-photo" type="button" data-photo-id="{{ photo['id'] }}" data-filename="{{ photo['filename'] }}" title="Excluir foto">🗑</button>
+        </div>
+      </figure>
+    {% endfor %}
+  </div>
+
+  <div class="empty-state" id="gallery-empty" {% if photos %}hidden{% endif %}>
+    <h2>Nenhuma foto enviada</h2>
+    <p>Use a área acima para enviar as fotos do evento.</p>
+  </div>
+</section>
+{% endblock %}

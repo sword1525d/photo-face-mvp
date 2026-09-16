@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Painel · {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="section">
+  <header class="section-head">
+    <div>
+      <p class="eyebrow">Administração</p>
+      <h1>Eventos</h1>
+    </div>
+    <button class="btn btn-primary" type="button" data-toggle-target="#new-event-panel">+ Novo evento</button>
+  </header>
+
+  <div class="panel" id="new-event-panel" hidden>
+    <h2>Criar evento</h2>
+    <form class="form-grid" method="post" action="{{ url_for('admin_create_event') }}" data-slug-source="name">
+      <label class="field">
+        <span>Nome do evento *</span>
+        <input type="text" name="name" id="event-name" placeholder="Corrida Manaus 2026" required>
+      </label>
+      <label class="field">
+        <span>Data do evento</span>
+        <input type="date" name="event_date">
+      </label>
+      <label class="field field-full">
+        <span>Descrição</span>
+        <textarea name="description" rows="3" placeholder="Fotos oficiais do evento. Encontre as suas enviando uma selfie."></textarea>
+      </label>
+      <p class="field field-full slug-preview">
+        Endereço público: <code id="slug-preview">/evento/…</code>
+      </p>
+      <div class="field field-full form-actions">
+        <button class="btn btn-primary" type="submit">Criar evento</button>
+        <button class="btn btn-ghost" type="reset">Limpar</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="section">
+  {% if events %}
+    <div class="event-list">
+      {% for event in events %}
+        {% set stat = stats.get(event['id'], {}) %}
+        {% set cover = covers.get(event['id']) %}
+        <article class="admin-row">
+          <div class="admin-row-cover{% if not cover %} empty{% endif %}">
+            {% if cover %}<img src="{{ storage_url(cover) }}" alt="" loading="lazy">{% else %}<span>📷</span>{% endif %}
+          </div>
+          <div class="admin-row-body">
+            <h3>{{ event['name'] }}</h3>
+            <p class="muted">/evento/{{ event['slug'] }}{% if event['event_date'] %} · {{ event['event_date']|dt }}{% endif %}</p>
+            <ul class="stats-inline">
+              <li><strong>{{ stat.get('total', 0) }}</strong> fotos</li>
+              <li><strong>{{ stat.get('processed', 0) }}</strong> processadas</li>
+              <li><strong>{{ stat.get('no_faces', 0) }}</strong> sem rostos</li>
+              <li><strong>{{ stat.get('errors', 0) }}</strong> com erro</li>
+              <li><strong>{{ stat.get('faces', 0) }}</strong> rostos</li>
+            </ul>
+          </div>
+          <div class="admin-row-actions">
+            <a class="btn btn-primary" href="{{ url_for('admin_event', event_id=event['id']) }}">Gerenciar fotos</a>
+            <a class="btn btn-ghost" href="{{ url_for('public_event', slug=event['slug']) }}" target="_blank" rel="noopener">Ver página pública</a>
+            <button
+              class="btn btn-danger js-delete-event"
+              type="button"
+              data-url="{{ url_for('admin_delete_event', event_id=event['id']) }}"
+              data-name="{{ event['name'] }}">Excluir evento</button>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h2>Nenhum evento cadastrado</h2>
+      <p>Comece criando um evento: depois você poderá enviar dezenas de fotos de uma vez.</p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

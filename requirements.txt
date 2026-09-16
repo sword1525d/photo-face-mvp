@@ -1,0 +1,59 @@
+# =============================================================================
+# Photo Face MVP — dependências
+# Versões testadas em conjunto (Python 3.10 / 3.11 / 3.12, Windows, sem GPU).
+# =============================================================================
+#
+# ATENÇÃO (Windows): o pacote `insightface` é publicado apenas como código-fonte
+# e precisa do compilador Microsoft Visual C++ para ser construído. Se ele
+# falhar ao instalar, use o wheel pré-compilado — veja a seção
+# "InsightFace no Windows" do README.md:
+#
+#   python -m pip install https://github.com/Gourieff/Assets/raw/main/Insightface/insightface-0.7.3-cp312-cp312-win_amd64.whl
+#
+# (troque cp312 por cp310 / cp311 conforme a versão do Python)
+#
+# As versões abaixo formam um conjunto coerente:
+#   * numpy 1.26.4           -> exigido por onnxruntime 1.18 e opencv 4.10 (numpy < 2)
+#   * albumentations 1.4.19  -> fixa albucore 0.0.19 (par compatível)
+#   * contourpy / tifffile   -> versões que ainda aceitam numpy 1.26
+
+# ------------------------------------------------------------------ núcleo web
+Flask==3.0.3
+Werkzeug==3.0.4
+Jinja2==3.1.4
+
+# ------------------------------------------------------- imagens e matemática
+numpy==1.26.4
+Pillow==10.4.0
+# Leitura de HEIC/HEIF (fotos de iPhone). Se não estiver presente, o app continua
+# funcionando e explica ao usuário como converter a imagem.
+pillow-heif==0.22.0
+opencv-python==4.10.0.84
+scipy==1.14.1
+
+# ---------------------------------------------------- reconhecimento facial
+onnxruntime==1.18.1
+insightface==0.7.3
+
+# ------------------------------------- RAW de câmeras (NEF, CR2, ARW, DNG...)
+# Traz o LibRaw embutido (não precisa de compilador). Se não estiver presente,
+# o sistema continua aceitando RAW usando o preview JPEG embutido no arquivo.
+rawpy==0.27.1
+
+# ------------------------------------- dependências declaradas pelo insightface
+onnx==1.16.2
+Cython==3.0.11
+scikit-image==0.24.0
+scikit-learn==1.5.2
+easydict==1.13
+prettytable==3.11.0
+tqdm==4.66.5
+requests==2.32.3
+matplotlib==3.9.2
+albumentations==1.4.19
+
+# ----------------------------------------- pinos que mantêm o numpy em 1.26.4
+contourpy==1.2.1
+tifffile==2024.8.30
+albucore==0.0.19
+opencv-python-headless==4.10.0.84

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Resultado da busca · {{ event['name'] }}{% endblock %}
+
+{% block content %}
+<section class="section">
+  <header class="section-head">
+    <div>
+      <p class="eyebrow">{{ event['name'] }}</p>
+      <h1>
+        {% if results %}
+          Encontramos {{ results|length }} foto{{ '' if results|length == 1 else 's' }} sua{{ '' if results|length == 1 else 's' }}
+        {% else %}
+          Não encontramos fotos correspondentes
+        {% endif %}
+      </h1>
+      <p class="muted small">
+        Busca concluída em {{ '%.2f'|format(elapsed) }}s · limite de similaridade {{ '%.2f'|format(threshold) }}
+      </p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('public_event', slug=event['slug']) }}">← Buscar outra selfie</a>
+  </header>
+
+  {% if results %}
+    <div class="photo-grid results" data-show-similarity="{{ 'true' if show_similarity else 'false' }}">
+      {% for item in results %}
+        <figure class="photo-card" data-photo-id="{{ item.photo_id }}">
+          <button class="photo-thumb" type="button"
+                  data-full="{{ storage_url(item.original_path) }}"
+                  data-caption="{{ item.filename }}">
+            {% if item.thumbnail_path %}
+              <img src="{{ storage_url(item.thumbnail_path) }}" alt="Foto {{ loop.index }}" loading="lazy">
+            {% else %}
+              <span class="thumb-fallback">sem prévia</span>
+            {% endif %}
+          </button>
+          {% if show_similarity %}
+            <figcaption class="photo-meta">
+              <span class="similarity">{{ '%.1f'|format(item.similarity * 100) }}% de similaridade</span>
+            </figcaption>
+          {% endif %}
+        </figure>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <h2>Não encontramos fotos correspondentes</h2>
+      <p>
+        Tente enviar outra selfie com o rosto bem visível, sem óculos escuros e com boa iluminação.
+        Se você realmente aparece nas fotos do evento, o organizador pode aumentar a sensibilidade da busca.
+      </p>
+      <a class="btn btn-primary" href="{{ url_for('public_event', slug=event['slug']) }}">Tentar novamente</a>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

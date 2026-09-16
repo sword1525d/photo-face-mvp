@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ app_name }} — Encontre suas fotos{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Reconhecimento facial</p>
+  <h1>Encontre suas fotos</h1>
+  <p class="hero-sub">
+    Selecione o evento, envie uma selfie e receba apenas as fotos em que você aparece.
+  </p>
+</section>
+
+{% if events %}
+  <section class="section">
+    <header class="section-head">
+      <h2>Eventos disponíveis</h2>
+      <span class="badge">{{ events|length }} evento{{ '' if events|length == 1 else 's' }}</span>
+    </header>
+
+    <div class="event-grid">
+      {% for event in events %}
+        {% set cover = covers.get(event['id']) %}
+        <a class="event-card" href="{{ url_for('public_event', slug=event['slug']) }}">
+          <div class="event-cover{% if not cover %} event-cover-empty{% endif %}">
+            {% if cover %}
+              <img src="{{ storage_url(cover) }}" alt="Capa do evento {{ event['name'] }}" loading="lazy">
+            {% else %}
+              <span aria-hidden="true">📷</span>
+            {% endif %}
+          </div>
+          <div class="event-body">
+            <h3>{{ event['name'] }}</h3>
+            {% if event['event_date'] %}<p class="event-date">{{ event['event_date']|dt }}</p>{% endif %}
+            {% if event['description'] %}
+              <p class="event-description">{{ event['description'] }}</p>
+            {% endif %}
+            <p class="event-stats">
+              <span>{{ event['photo_count'] }} foto{{ '' if event['photo_count'] == 1 else 's' }}</span>
+              <span>{{ event['face_count'] }} rosto{{ '' if event['face_count'] == 1 else 's' }}</span>
+            </p>
+          </div>
+          <span class="event-cta">Buscar minhas fotos →</span>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% else %}
+  <section class="section">
+    <div class="empty-state">
+      <h2>Nenhum evento publicado ainda</h2>
+      <p>Crie o primeiro evento no painel administrativo e envie as fotos para começar.</p>
+      <a class="btn btn-primary" href="{{ url_for('admin_index') }}">Ir para o painel</a>
+    </div>
+  </section>
+{% endif %}
+{% endblock %}

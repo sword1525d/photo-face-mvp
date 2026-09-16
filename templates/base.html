@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }} — Encontre suas fotos{% endblock %}</title>
+  <meta name="description" content="Busque suas fotos em eventos usando reconhecimento facial.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128247;</text></svg>">
+  <link rel="stylesheet" href="{{ asset_url('css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+      <span class="brand-mark" aria-hidden="true">◎</span>
+      <span class="brand-text">photo<strong>face</strong></span>
+    </a>
+    <nav class="topbar-nav">
+      <a href="{{ url_for('index') }}">Eventos</a>
+      <a href="{{ url_for('admin_index') }}">Painel</a>
+    </nav>
+  </header>
+
+  <main class="page">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}" role="status">
+              <span>{{ message }}</span>
+              <button type="button" class="flash-close" aria-label="Fechar">&times;</button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer">
+    <p>Photo Face MVP · busca de fotos por reconhecimento facial · processamento local</p>
+  </footer>
+
+  <div class="lightbox" id="lightbox" hidden>
+    <button class="lightbox-close" type="button" aria-label="Fechar imagem">&times;</button>
+    <img class="lightbox-image" src="" alt="">
+    <div class="lightbox-caption"></div>
+  </div>
+
+  <script src="{{ asset_url('js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

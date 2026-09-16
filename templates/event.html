@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ event['name'] }} — Encontre suas fotos{% endblock %}
+
+{% block content %}
+<section class="event-hero{% if cover_url %} has-cover{% endif %}"
+         {% if cover_url %}style="--cover-image: url('{{ cover_url }}')"{% endif %}>
+  <div class="event-hero-inner">
+    <p class="eyebrow">
+      {{ (stats.processed + stats.no_faces) }} foto{{ '' if (stats.processed + stats.no_faces) == 1 else 's' }} publicada{{ '' if (stats.processed + stats.no_faces) == 1 else 's' }}
+    </p>
+    <h1>{{ event['name'] }}</h1>
+    <p class="event-hero-sub">
+      {{ event['description'] or 'Encontre todas as fotos em que você aparece.' }}
+    </p>
+  </div>
+</section>
+
+<section class="section"
+         id="search-section"
+         data-search-url="{{ url_for('public_event_search', slug=event['slug']) }}"
+         data-show-similarity="{{ 'true' if show_similarity else 'false' }}">
+
+  <div class="search-card">
+    <h2>Encontre suas fotos</h2>
+    <p class="muted">Envie uma selfie e faremos a busca automaticamente.</p>
+
+    <form id="selfie-form" method="post"
+          action="{{ url_for('public_event_search', slug=event['slug']) }}"
+          enctype="multipart/form-data">
+      <input type="file" id="selfie-input" name="selfie" accept="image/*,.heic,.heif,.jpg,.jpeg,.png,.webp" hidden>
+
+      <div class="selfie-drop" id="selfie-drop">
+        <span class="selfie-icon" aria-hidden="true">🙂</span>
+        <p>Toque para tirar/enviar sua selfie</p>
+        <span class="muted small">Rosto frontal, bem iluminado, uma pessoa só · JPG, PNG, WEBP ou HEIC</span>
+      </div>
+
+      <div class="selfie-preview" id="selfie-preview" hidden>
+        <img id="selfie-thumb" src="" alt="Prévia da selfie enviada">
+        <div class="selfie-preview-info">
+          <strong id="selfie-name">selfie.jpg</strong>
+          <button type="button" class="btn btn-ghost btn-sm" id="selfie-change">Trocar foto</button>
+        </div>
+      </div>
+
+      <label class="consent">
+        <input type="checkbox" id="consent" name="consent" value="1">
+        <span>Concordo com o processamento da minha imagem para realizar esta busca.</span>
+      </label>
+
+      <button class="btn btn-primary btn-lg" type="submit" id="selfie-submit" disabled>
+        Enviar selfie
+      </button>
+      <noscript>
+        <p class="muted small">O JavaScript está desativado: selecione a selfie e clique em enviar.</p>
+      </noscript>
+    </form>
+
+    <div class="alert alert-error" id="search-error" hidden role="alert"></div>
+  </div>
+
+  <div class="loading-overlay" id="loading-overlay" hidden>
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="loading-step" id="loading-step">Analisando sua selfie...</p>
+    <p class="loading-hint" id="loading-hint">Isso leva apenas alguns segundos.</p>
+  </div>
+
+  <div class="results" id="results"></div>
+</section>
+{% endblock %}
