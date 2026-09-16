@@ -16,6 +16,7 @@ Este módulo não conhece banco de dados nem Flask: recebe as linhas de
 from __future__ import annotations
 
 import logging
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 # Limites padrão (sobrescritos pelo Config).
 DEFAULT_MAX_FILES = 200
 DEFAULT_MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB
+
+# ZIPs de download que passaram disso são considerados sobras (ver `purge_stale`).
+STALE_ARCHIVE_SECONDS = 15 * 60
 
 
 class DownloadError(Exception):
@@ -61,12 +65,14 @@ class DownloadService:
         temp_root: str | Path,
         max_files: int = DEFAULT_MAX_FILES,
         max_total_bytes: int = DEFAULT_MAX_TOTAL_BYTES,
+        stale_seconds: int = STALE_ARCHIVE_SECONDS,
     ) -> None:
         self.storage_root = Path(storage_root).resolve()
         self.temp_root = Path(temp_root)
         self.temp_root.mkdir(parents=True, exist_ok=True)
         self.max_files = int(max_files)
         self.max_total_bytes = int(max_total_bytes)
+        self.stale_seconds = int(stale_seconds)
 
     # ------------------------------------------------------------------
     # Resolução dos arquivos
@@ -138,6 +144,7 @@ class DownloadService:
         if not files:
             raise DownloadError("Nenhuma foto selecionada para baixar.")
 
+        self.purge_stale()
         target = self.temp_root / f"download-{uuid4().hex}.zip"
         used: set[str] = set()
         try:
@@ -161,6 +168,26 @@ class DownloadService:
             Path(path).unlink(missing_ok=True)
         except OSError:  # pragma: no cover - no Windows o arquivo pode estar em uso
             logger.warning("Não foi possível remover o arquivo temporário %s", path)
+
+    def purge_stale(self) -> int:
+        """Remove ZIPs de download que ficaram para trás.
+
+        Em alguns sistemas (Windows) o arquivo continua travado enquanto está
+        sendo enviado e o `unlink` do fim da requisição falha — sem esta faxina
+        esses ZIPs se acumulariam em ``storage/tmp`` até o container reiniciar.
+        """
+        limit = time.time() - self.stale_seconds
+        removed = 0
+        for leftover in self.temp_root.glob("download-*.zip"):
+            try:
+                if leftover.stat().st_mtime < limit:
+                    leftover.unlink()
+                    removed += 1
+            except OSError:  # pragma: no cover - defensivo
+                continue
+        if removed:
+            logger.info("ZIPs de download antigos removidos: %s", removed)
+        return removed
 
 
 def _unique_name(name: str, used: set[str]) -> str:

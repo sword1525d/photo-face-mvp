@@ -24,7 +24,7 @@ UPLOAD DAS FOTOS -> DETECÇÃO DOS ROSTOS -> EMBEDDINGS -> BANCO
 - **Upload de ZIP** com dezenas de fotos: o arquivo é descompactado e cada foto entra na fila
   (pastas internas são achatadas e arquivos inválidos são reportados, sem derrubar o envio).
 - **Aceita RAW de câmera (`.NEF` e equivalentes)**: o RAW é convertido para JPEG para exibição
-  e o **arquivo original é preservado** (com link de download na galeria).
+  e o **arquivo original é preservado**, baixável na galeria do painel (`⤓ Original` e `⤓ RAW`).
 - **Aceita HEIC/HEIF** (fotos de iPhone e de vários Android) e valida todo arquivo pelo
   **conteúdo real**, não pela extensão — um arquivo renomeado funciona e um arquivo inválido
   recebe uma explicação do que ele é de verdade.
@@ -38,6 +38,8 @@ UPLOAD DAS FOTOS -> DETECÇÃO DOS ROSTOS -> EMBEDDINGS -> BANCO
 - Envio de selfie com **consentimento obrigatório**.
 - Mensagens claras para "nenhum rosto identificado" e "envie uma selfie com apenas uma pessoa".
 - Galeria com grid responsivo (4–5 colunas no desktop, 2 no mobile) e lightbox (imagem ampliada).
+- **Download do arquivo original** (sem redução de qualidade) em cada foto, e **seleção de
+  várias fotos** para baixar tudo de uma vez em um único `.zip`.
 
 **Privacidade**
 
@@ -264,8 +266,10 @@ O sistema resolve isso em duas etapas:
    resolução total). Nada de dependência extra — funciona sempre.
 
 O JPEG gerado passa a ser a imagem exibida (galeria, lightbox e detecção de rostos) e o
-**`.nef` original fica guardado** ao lado, com um link de download (ícone ⤓) na galeria
-do painel e a etiqueta `RAW` no card. Ao excluir a foto, os dois arquivos são removidos.
+**`.nef` original fica guardado** ao lado, com os botões `⤓ Original` (o JPEG em tamanho cheio)
+e `⤓ RAW` (o `.nef` de verdade) na galeria do painel e a etiqueta `RAW` no card. A busca
+pública entrega o **JPEG em tamanho cheio** — quem quer o RAW usa o painel.
+Ao excluir a foto, os dois arquivos são removidos.
 
 ---
 
@@ -284,6 +288,9 @@ python tools/zip_raw_test.py
 
 # 4) Selfie em vários formatos (HEIC, extensão errada, arquivo corrompido…)
 python tools/selfie_formats_test.py
+
+# 5) Download dos originais (uma foto, várias em ZIP, RAW, erros amigáveis)
+python tools/download_test.py
 ```
 
 O segundo script executa exatamente o critério de aceite do MVP: cria o evento,
@@ -292,7 +299,10 @@ exclui uma foto. O terceiro monta um ZIP "sujo" (subpasta, `.txt`, ZIP dentro de
 caminho `../`, metadados do macOS e uma *zip bomb*) e um NEF sintético, e valida que
 nada disso escapa do storage. O quarto envia a mesma selfie como JPEG, HEIC, arquivo
 sem extensão e com extensão trocada, além de lixo, ZIP, PDF e vídeo — todas as respostas
-devem ser coerentes (busca funciona ou mensagem clara).
+devem ser coerentes (busca funciona ou mensagem clara). O quinto usa o *test client* do Flask
+com banco e storage temporários (não toca nos seus dados) para provar que o download entrega
+o **arquivo original byte a byte** (e não o thumbnail), que a seleção vira ZIP com os originais
+intactos e que os erros viram mensagens amigáveis.
 
 ---
 
@@ -313,6 +323,7 @@ photo-face-mvp/
 │   ├── image_service.py        # validação, gravação, thumbnails, leitura para CV
 │   ├── raw_service.py          # RAW de câmera (rawpy/LibRaw + preview embutido)
 │   ├── archive_service.py      # extração segura de ZIP (limites + anti zip bomb)
+│   ├── download_service.py     # download dos originais (1 foto ou várias em ZIP)
 │   ├── face_service.py         # InsightFace (modelo carregado 1x, singleton)
 │   └── search_service.py       # busca por similaridade de cosseno (backend trocável)
 ├── templates/
@@ -330,7 +341,8 @@ photo-face-mvp/
     ├── smoke_test.py           # teste do pipeline de reconhecimento
     ├── http_smoke_test.py      # teste do fluxo HTTP completo
     ├── zip_raw_test.py         # teste de ZIP com várias fotos e de RAW (.NEF)
-    └── selfie_formats_test.py  # teste de formatos de selfie (HEIC, corrompido, ZIP…)
+    ├── selfie_formats_test.py  # teste de formatos de selfie (HEIC, corrompido, ZIP…)
+    └── download_test.py        # teste do download dos originais (1 foto e ZIP)
 ```
 
 ---
@@ -389,6 +401,8 @@ Tudo pode ser sobrescrito por variável de ambiente (útil para produção):
 | **`FACE_SIMILARITY_THRESHOLD`** | **`0.45`** | similaridade mínima para considerar "a mesma pessoa" |
 | `MAX_SEARCH_RESULTS` | `300` | máximo de fotos devolvidas por busca |
 | `MAX_SELFIE_LENGTH` | 12 MB | limite do arquivo da selfie |
+| `MAX_DOWNLOAD_PHOTOS` | `200` | máximo de fotos em um download (ZIP) |
+| `MAX_DOWNLOAD_BYTES` | 2 GB | tamanho total máximo dos arquivos de um download |
 
 Exemplo:
 
@@ -425,6 +439,8 @@ $env:FACE_SIMILARITY_THRESHOLD="0.38"; $env:DEBUG="false"; python app.py
 | POST | `/admin/event/<id>/delete` | exclui o evento e todas as fotos |
 | GET | `/evento/<slug>` | página pública do evento |
 | POST | `/evento/<slug>/search` | busca pela selfie (JSON ou HTML) |
+| GET | `/evento/<slug>/foto/<id>/baixar` | baixa o **arquivo original** da foto (`?raw=1` baixa o RAW preservado) |
+| POST | `/evento/<slug>/baixar` | baixa as fotos marcadas (`ids`): 1 vira arquivo, 2+ viram `.zip` |
 | GET | `/storage/<path>` | serve originais e thumbnails |
 | GET | `/healthz` | status do banco, do motor facial e do threshold |
 
@@ -478,6 +494,10 @@ método e injetá-la — nenhuma rota precisa mudar.
 - A imagem é validada com o Pillow (formato real), não apenas pela extensão.
 - `/storage/<path>` usa `send_from_directory`, que bloqueia path traversal
   (`/storage/../../app.py` → 404, verificado nos testes).
+- O download só aceita ids de fotos **do evento da URL**; um id de outro evento é ignorado
+  (não confirma nem nega a existência da foto). O ZIP é montado em `storage/tmp` com
+  `ZIP_STORED` (nenhuma recompressão: os bytes saem idênticos ao original) e apagado logo
+  depois do envio, com faxina de sobras antigas a cada novo download.
 - Limite de tamanho por requisição (`MAX_CONTENT_LENGTH`) e por selfie (`MAX_SELFIE_LENGTH`).
 - Erros devolvem mensagens amigáveis ("Não foi possível processar esta imagem.") — nunca
   traceback para o usuário (o traceback fica no log).

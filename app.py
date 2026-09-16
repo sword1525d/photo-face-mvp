@@ -20,6 +20,7 @@ os.environ.setdefault("NO_ALBUMENTATIONS_UPDATE", "1")
 from flask import (
     Flask,
     abort,
+    after_this_request,
     flash,
     jsonify,
     redirect,
@@ -534,7 +535,7 @@ def create_app(load_model: bool | None = None) -> Flask:
         if len(files) == 1:
             item = files[0]
             logger.info(
-                "Download event=%s foto=%s arquivo=%s %.1fKB",
+                "Download event=%s 1 foto em %s (%.1f KB)",
                 event["id"],
                 item.name,
                 item.size / 1024.0,
@@ -555,10 +556,26 @@ def create_app(load_model: bool | None = None) -> Flask:
             archive_path.stat().st_size / (1024 * 1024),
         )
         response = send_file(
-            archive_path, as_attachment=True, download_name=download_name, max_age=0
+            archive_path,
+            # Explícito: o `mimetypes` do sistema (Windows, por exemplo) pode
+            # devolver `application/x-zip-compressed` e o arquivo chegar com um
+            # tipo estranho no navegador.
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=download_name,
+            max_age=0,
         )
-        # O ZIP é temporário: apaga assim que a resposta terminar de ser enviada.
-        response.call_on_close(lambda: download_service.cleanup(archive_path))
+        # O ZIP é temporário. A limpeza vai no `after_this_request` e NÃO no
+        # `response.call_on_close`: o `send_file` usa `direct_passthrough`, e
+        # nesse modo o Werkzeug não executa os callbacks de fechamento (o
+        # arquivo ficaria no disco para sempre). No Linux o arquivo pode ser
+        # apagado enquanto está aberto — o envio continua, porque o descritor
+        # já está aberto; no Windows o `unlink` falha (e o serviço ignora).
+        @after_this_request
+        def _remove_temp_archive(current_response):
+            download_service.cleanup(archive_path)
+            return current_response
+
         return response
 
     # ------------------------------------------------------------------
