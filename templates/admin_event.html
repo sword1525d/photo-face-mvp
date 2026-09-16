@@ -16,7 +16,10 @@
     <div class="alert alert-warning">
       <strong>Motor de reconhecimento facial indisponível.</strong>
       <p>{{ face_error or 'Verifique a instalação do InsightFace (pip install -r requirements.txt).' }}</p>
-      <p>As fotos enviadas ficam salvas como “aguardando” e podem ser reprocessadas depois.</p>
+      <p>
+        As fotos enviadas ficam salvas como “aguardando”: depois de corrigir o problema,
+        use o botão <em>Reprocessar pendentes</em> abaixo — não é preciso enviar tudo de novo.
+      </p>
     </div>
   {% endif %}
 
@@ -61,7 +64,18 @@
 <section class="section">
   <header class="section-head">
     <h2>Fotos do evento</h2>
-    <span class="badge" id="photo-count">{{ photos|length }} foto{{ '' if photos|length == 1 else 's' }}</span>
+    <div class="section-actions">
+      {% set pendentes = stats.pending + stats.errors %}
+      {% if pendentes %}
+        <button class="btn btn-ghost js-reprocess-pending" type="button"
+                data-url="{{ url_for('admin_reprocess_pending', event_id=event['id']) }}"
+                data-count="{{ pendentes }}"
+                title="Roda a detecção novamente nas fotos que ficaram aguardando ou com erro">
+          ↻ Reprocessar {{ pendentes }} pendente{{ '' if pendentes == 1 else 's' }}
+        </button>
+      {% endif %}
+      <span class="badge" id="photo-count">{{ photos|length }} foto{{ '' if photos|length == 1 else 's' }}</span>
+    </div>
   </header>
 
   <div class="photo-grid"
@@ -81,7 +95,8 @@
           {% endif %}
         </button>
         <figcaption class="photo-meta">
-          <span class="status status-{{ photo['status'] }}">{{ status_labels.get(photo['status'], photo['status']) }}</span>
+          <span class="status status-{{ photo['status'] }}"
+                {% if photo['error_message'] %}title="{{ photo['error_message'] }}"{% endif %}>{{ status_labels.get(photo['status'], photo['status']) }}</span>
           <span class="faces-count">{{ photo['faces_count'] }} rosto{{ '' if photo['faces_count'] == 1 else 's' }}</span>
           {% if photo['raw_path'] %}<span class="raw-tag" title="Arquivo RAW original preservado">RAW</span>{% endif %}
         </figcaption>

@@ -28,7 +28,15 @@ Pillow==10.4.0
 # Leitura de HEIC/HEIF (fotos de iPhone). Se não estiver presente, o app continua
 # funcionando e explica ao usuário como converter a imagem.
 pillow-heif==0.22.0
-opencv-python==4.10.0.84
+
+# ATENÇÃO: usamos o pacote *headless* de propósito.
+# O `opencv-python` (com GUI) depende de libGL.so.1, que NÃO existe em imagens
+# Docker "slim" — em container o import falhava com:
+#   "libGL.so.1: cannot open shared object file"
+# O headless tem exatamente as mesmas funções de imagem usadas pelo projeto
+# (detecção, resize, conversão de cor) e não precisa de bibliotecas gráficas.
+# NUNCA instale `opencv-python` junto: os dois brigam pelo mesmo pacote `cv2`.
+opencv-python-headless==4.10.0.84
 scipy==1.14.1
 
 # ---------------------------------------------------- reconhecimento facial
@@ -56,4 +64,3 @@ albumentations==1.4.19
 contourpy==1.2.1
 tifffile==2024.8.30
 albucore==0.0.19
-opencv-python-headless==4.10.0.84

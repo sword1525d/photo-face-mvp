@@ -157,6 +157,38 @@ Acesse:
 | Página pública do evento | http://localhost:5000/evento/corrida-manaus-2026 |
 | Diagnóstico (JSON) | http://localhost:5000/healthz |
 
+### 4.1 Em container (Docker / Linux)
+
+O projeto inclui um `Dockerfile` pronto, baseado em `python:3.12-slim`:
+
+```bash
+docker build -t photo-face-mvp .
+docker run -d --name photo-face -p 8080:8080 \
+  -v "$PWD/data:/app/data" \
+  photo-face-mvp
+```
+
+Acesse http://localhost:8080 (painel em `/admin`).
+
+O que o `Dockerfile` já resolve:
+
+| Item | Por quê |
+| --- | --- |
+| `build-essential` | o `insightface` compila um módulo Cython durante o `pip install` (a imagem *slim* não traz compilador) |
+| `libgl1` / `libglib2.0-0` | exigidas pelo `opencv-python` **com GUI**. O projeto usa `opencv-python-headless`, que não precisa delas — ficam como rede de segurança |
+| `/app/data` (volume) | banco SQLite + fotos. **Monte o volume**, senão tudo se perde ao recriar o container |
+| `waitress` | servidor WSGI de produção, em vez do servidor de desenvolvimento do Flask |
+| `HEALTHCHECK` | consulta `/healthz` a cada 30s |
+
+> ⚠️ **Nunca instale `opencv-python` junto com `opencv-python-headless`**: os dois instalam o
+> mesmo pacote `cv2` e um sobrescreve o outro. Era exatamente esse o caso do erro
+> `libGL.so.1: cannot open shared object file` em container — o `cv2` que "ganhava" era o que
+> precisa de bibliotecas gráficas.
+
+Se o container subir mas o motor facial não carregar, o painel mostra o motivo real
+(ex.: `Falha ao carregar o InsightFace (ImportError: libGL.so.1 ...)`) e as fotos ficam como
+**aguardando** — corrija a causa e use **Reprocessar pendentes**, sem precisar reenviar nada.
+
 ---
 
 ## 5. Como usar (roteiro do primeiro teste)
@@ -265,6 +297,7 @@ photo-face-mvp/
 ├── app.py                      # Flask: rotas, upload, busca, tratamento de erros
 ├── config.py                   # toda a configuração (paths, limites, threshold)
 ├── requirements.txt
+├── Dockerfile                  # imagem Linux pronta (headless + waitress)
 ├── README.md
 ├── database.db                 # criado automaticamente na 1ª execução
 ├── services/
@@ -457,6 +490,8 @@ método e injetá-la — nenhuma rota precisa mudar.
 | `No module named 'albumentations'` / `'matplotlib'` | Dependências do InsightFace não instaladas: `pip install -r requirements.txt` |
 | Demora muito na primeira execução | Download do modelo `buffalo_l` (~280 MB) em `~/.insightface/models` |
 | `/healthz` mostra `"face_engine": false` | Veja `face_error` no próprio `/healthz`; normalmente é dependência faltando |
+| `libGL.so.1: cannot open shared object file` (container Linux) | O `cv2` instalado é o `opencv-python` (com GUI). Instale `opencv-python-headless` e remova o completo — `pip uninstall -y opencv-python && pip install opencv-python-headless==4.10.0.84`. Alternativa: `apt-get install -y libgl1 libglib2.0-0` |
+| Fotos ficaram “Aguardando” e ninguém foi detectado | O motor facial estava indisponível no momento do upload (dependência faltando). Corrija e clique em **Reprocessar N pendentes** no painel do evento — os originais continuam salvos |
 | NEF/RAW dá "Não foi possível ler este arquivo RAW" | O arquivo está corrompido/truncado ou o formato não é suportado pelo LibRaw. Veja `raw_support` em `/healthz` |
 | `rawpy` aparece como `None` em `/healthz` | O modo *fallback* (preview JPEG embutido) assume. Para o melhor resultado: `pip install rawpy` |
 | ZIP inteiro é ignorado no upload | Alguma entrada estourou os limites (`MAX_ZIP_*`); a razão exata aparece na lista de avisos da tela |
@@ -473,9 +508,9 @@ método e injetá-la — nenhuma rota precisa mudar.
 
 ## 15. O que **não** faz parte deste MVP
 
-Login de usuários, pagamentos, Docker, PostgreSQL, Redis/Celery/RabbitMQ, Kubernetes,
-AWS, frameworks frontend (Angular/React), pgvector/FAISS, moderação de conteúdo e
-armazenamento em nuvem. O foco é rodar localmente com o mínimo de infraestrutura.
+Login de usuários, pagamentos, PostgreSQL, Redis/Celery/RabbitMQ, Kubernetes, AWS,
+pgvector/FAISS, moderação de conteúdo e armazenamento em nuvem. O foco é rodar localmente
+(ou em um único container — há um `Dockerfile` pronto) com o mínimo de infraestrutura.
 
 ### Próximos passos naturais
 

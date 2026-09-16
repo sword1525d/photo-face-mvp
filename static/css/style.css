@@ -193,6 +193,13 @@ code {
   margin-bottom: 1.25rem;
 }
 
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .eyebrow {
   margin: 0 0 0.35rem;
   text-transform: uppercase;

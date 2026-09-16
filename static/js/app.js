@@ -212,6 +212,9 @@
       const status = document.createElement("span");
       status.className = "status status-" + item.status;
       status.textContent = item.status_label || item.status;
+      // Mostra no tooltip o motivo salvo (ex.: libGL faltando no container).
+      const reason = item.error || item.detail;
+      if (reason) status.title = reason;
       const faces = document.createElement("span");
       faces.className = "faces-count";
       faces.textContent = (item.faces_count || 0) + " " + pluralize(item.faces_count || 0, "rosto");
@@ -355,6 +358,49 @@
         return;
       }
       run(files);
+    });
+
+    // Reprocessar as fotos que ficaram aguardando (motor facial indisponível no upload)
+    const reprocessButton = document.querySelector(".js-reprocess-pending");
+    reprocessButton?.addEventListener("click", async () => {
+      const total = parseInt(reprocessButton.dataset.count || "0", 10);
+      if (!window.confirm("Rodar a detecção de rostos novamente em " + total + " foto(s)?")) return;
+
+      reprocessButton.disabled = true;
+      progress.hidden = false;
+      setProgress(0, total, "Reprocessando " + total + " foto(s)…");
+
+      try {
+        const response = await fetch(reprocessButton.dataset.url, {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json" },
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data) {
+          throw new Error((data && data.error) || "Não foi possível reprocessar agora.");
+        }
+
+        (data.results || [])
+          .filter((item) => !item.ok)
+          .forEach((item) => addIssue((item.filename || "foto") + ": " + (item.detail || item.error), "warn"));
+
+        setProgress(
+          data.processed || 0,
+          data.count || 0,
+          data.processed + " de " + data.count + " foto(s) processada(s) agora."
+        );
+        updateStats(data.stats);
+
+        if (data.processed > 0) {
+          setTimeout(() => window.location.reload(), 1500);
+        } else {
+          reprocessButton.disabled = false;
+        }
+      } catch (error) {
+        addIssue(error.message, "error");
+        detail.textContent = error.message;
+        reprocessButton.disabled = false;
+      }
     });
 
     // Excluir / reprocessar (delegação: vale também para cards criados depois).

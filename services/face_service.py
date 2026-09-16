@@ -103,12 +103,26 @@ class FaceRecognitionService:
                 return True
             try:
                 from insightface.app import FaceAnalysis  # import tardio (pesado)
-            except Exception as exc:  # pragma: no cover
+            except ModuleNotFoundError as exc:
                 self._load_error = (
-                    "InsightFace não está instalado neste ambiente. "
+                    "O InsightFace não está instalado neste ambiente. "
                     "Rode: pip install -r requirements.txt"
                 )
-                logger.error("Falha ao importar insightface: %s", exc)
+                logger.error("InsightFace ausente: %s", exc)
+                return False
+            except Exception as exc:
+                # Caso clássico em container Linux: `opencv-python` (com GUI) precisa
+                # de libGL.so.1, que não existe em imagens "slim".
+                detail = f"{type(exc).__name__}: {exc}"
+                hint = ""
+                if "libgl" in detail.lower():
+                    hint = (
+                        " Falta uma biblioteca do sistema: use o pacote "
+                        "'opencv-python-headless' (padrão do requirements.txt) ou instale "
+                        "'libgl1' e 'libglib2.0-0' na imagem (apt-get install -y libgl1 libglib2.0-0)."
+                    )
+                self._load_error = f"Falha ao carregar o InsightFace ({detail}).{hint}"
+                logger.error("Falha ao importar insightface: %s", detail)
                 return False
 
             ctx_id = self._ctx_id

@@ -233,12 +233,15 @@ def create_app(load_model: bool | None = None) -> Flask:
             faces = face_service.detect_from_path(
                 absolute_original, max_side=Config.MAX_DETECTION_SIDE
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Falha ao detectar rostos photo=%s", photo_id)
+            # Guarda o motivo real (ex.: libGL faltando no container) para o admin
+            # entender por que a foto ficou aguardando.
+            reason = (str(exc) or face_service.load_error or "Não foi possível processar esta imagem.")[:300]
             photo_service.set_status(
                 photo_id,
                 STATUS_PENDING,
-                error_message="Não foi possível processar esta imagem.",
+                error_message=reason,
                 faces_count=0,
             )
             photo = photo_service.get(photo_id)
@@ -279,6 +282,48 @@ def create_app(load_model: bool | None = None) -> Flask:
             time.perf_counter() - started,
         )
         return photo_payload(photo, saved, origin=origin), 200
+
+    def reprocess_photo(photo_row) -> dict:
+        """Roda a detecção novamente em uma foto já gravada.
+
+        Usado pelo botão de reprocessar de um card e pelo botão "reprocessar
+        pendentes" (útil quando o motor facial estava indisponível no upload).
+        """
+        photo_id = int(photo_row["id"])
+        event_id = int(photo_row["event_id"])
+        try:
+            faces = face_service.detect_from_path(
+                image_service.absolute(photo_row["original_path"]),
+                max_side=Config.MAX_DETECTION_SIDE,
+            )
+        except Exception as exc:
+            reason = (str(exc) or type(exc).__name__)[:300]
+            logger.exception("Falha ao reprocessar photo=%s", photo_id)
+            # Volta para `pending` (e não `error`) para continuar elegível a nova tentativa.
+            photo_service.set_status(photo_id, STATUS_PENDING, error_message=reason)
+            return {
+                "ok": False,
+                "photo_id": photo_id,
+                "filename": photo_row["filename"],
+                "status": STATUS_PENDING,
+                "status_label": STATUS_LABELS.get(STATUS_PENDING, "Aguardando"),
+                "error": "Não foi possível processar esta imagem.",
+                "detail": reason,
+            }
+
+        if not faces:
+            photo_service.set_status(photo_id, STATUS_NO_FACES, faces_count=0, error_message=None)
+            return photo_payload(
+                photo_service.get(photo_id),
+                warning="Esta imagem não possui rostos detectáveis.",
+            )
+
+        faces_count = photo_service.replace_faces(photo_id, event_id, faces)
+        photo_service.set_status(photo_id, STATUS_PROCESSED, faces_count=faces_count, error_message=None)
+        event_row = event_service.get(event_id)
+        if event_row and not event_row["cover_path"]:
+            event_service.set_cover(event_id, photo_row["thumbnail_path"])
+        return photo_payload(photo_service.get(photo_id))
 
     # ------------------------------------------------------------------
     # Rotas públicas
@@ -591,7 +636,6 @@ def create_app(load_model: bool | None = None) -> Flask:
         if photo is None:
             return fail("Foto não encontrada.", 404, "not_found")
 
-        event_id = int(photo["event_id"])
         if not face_service.available and not face_service.load():
             return fail(
                 face_service.load_error or "Reconhecimento facial indisponível.",
@@ -599,23 +643,62 @@ def create_app(load_model: bool | None = None) -> Flask:
                 "engine_unavailable",
             )
 
-        try:
-            faces = face_service.detect_from_path(
-                image_service.absolute(photo["original_path"]), max_side=Config.MAX_DETECTION_SIDE
-            )
-        except Exception:
-            logger.exception("Falha ao reprocessar photo=%s", photo_id)
-            photo_service.set_status(photo_id, STATUS_ERROR, error_message="Falha no reprocessamento.")
-            return fail("Não foi possível processar esta imagem.", 500, "processing_error")
-
-        if not faces:
-            photo_service.set_status(photo_id, STATUS_NO_FACES, faces_count=0, error_message=None)
-            payload = photo_payload(photo_service.get(photo_id), warning="Esta imagem não possui rostos detectáveis.")
+        payload = reprocess_photo(photo)
+        if wants_json():
+            payload["stats"] = event_service.stats(int(photo["event_id"]))
             return jsonify(payload)
 
-        count = photo_service.replace_faces(photo_id, event_id, faces)
-        photo_service.set_status(photo_id, STATUS_PROCESSED, faces_count=count, error_message=None)
-        return jsonify(photo_payload(photo_service.get(photo_id)))
+        if payload.get("ok"):
+            flash(f"{photo['filename']} reprocessada com sucesso.", "success")
+        else:
+            flash(f"{photo['filename']}: {payload.get('error')}", "error")
+        return redirect(url_for("admin_event", event_id=int(photo["event_id"])))
+
+    @app.post("/admin/event/<int:event_id>/reprocess-pending")
+    def admin_reprocess_pending(event_id: int):
+        """Reprocessa todas as fotos que ficaram aguardando/erro.
+
+        Cenário típico: as fotos foram enviadas quando o motor de reconhecimento
+        ainda não estava funcionando (dependência faltando no container).
+        """
+        get_event_or_404(event_id)
+        if not face_service.available and not face_service.load():
+            return fail(
+                face_service.load_error or "Reconhecimento facial indisponível no momento.",
+                503,
+                "engine_unavailable",
+            )
+
+        pending = [
+            photo
+            for photo in photo_service.list_by_event(event_id)
+            if photo["status"] in (STATUS_PENDING, STATUS_ERROR)
+        ]
+        results = [reprocess_photo(photo) for photo in pending]
+        processed = sum(1 for item in results if item.get("ok"))
+        logger.info(
+            "Reprocessamento em lote event=%s: %s/%s foto(s) processada(s)",
+            event_id,
+            processed,
+            len(pending),
+        )
+
+        if not wants_json():
+            flash(
+                f"{processed} de {len(pending)} foto(s) reprocessada(s).",
+                "success" if processed else "error",
+            )
+            return redirect(url_for("admin_event", event_id=event_id))
+
+        return jsonify(
+            {
+                "ok": processed > 0,
+                "count": len(results),
+                "processed": processed,
+                "results": results,
+                "stats": event_service.stats(event_id),
+            }
+        )
 
     @app.post("/admin/event/<int:event_id>/delete")
     def admin_delete_event(event_id: int):
@@ -664,7 +747,11 @@ def create_app(load_model: bool | None = None) -> Flask:
     @app.errorhandler(RequestEntityTooLarge)
     def handle_413(error):
         limit = Config.MAX_CONTENT_LENGTH // (1024 * 1024)
-        message = f"O arquivo enviado é muito grande (limite de {limit} MB por envio)."
+        message = (
+            f"O envio é maior que o limite de {limit} MB por requisição. "
+            "Envie em lotes menores — ou, se for um ZIP, divida o arquivo em partes "
+            f"(o ZIP inteiro conta para esse limite). Dá para aumentar com MAX_CONTENT_LENGTH={limit * 2}."
+        )
         if wants_json():
             return jsonify({"ok": False, "error": message, "error_code": "too_large"}), 413
         return render_template("error.html", code=413, title="Arquivo muito grande", message=message), 413
