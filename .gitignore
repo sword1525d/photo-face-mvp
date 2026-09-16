@@ -13,6 +13,8 @@ database.db
 database.db-wal
 database.db-shm
 
+storage/
+database.db
 # Storage (fotos de eventos e temporários)
 storage/events/
 storage/tmp/
