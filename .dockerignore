@@ -1,0 +1,32 @@
+# =============================================================================
+# Contexto de build enxuto: só o que a imagem precisa receber via `COPY . .`.
+# =============================================================================
+
+# Controle de versão / ambiente local
+.git/
+.gitignore
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Dados locais: NUNCA entram na imagem (a imagem cria /app/data em tempo de
+# execução; o conteúdo real vem do volume montado)
+database.db
+database.db-wal
+database.db-shm
+data/
+storage/
+tools/sample/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Arquivos do próprio build
+Dockerfile
+.dockerignore

@@ -8,6 +8,16 @@
 #     photo-face-mvp
 #
 # Depois acesse http://localhost:8080 (painel em /admin).
+#
+# Porta: o servidor escuta em $PORT, com 8080 como padrão quando a variável
+# não existe (uso local). Em plataformas como o Railway, que injetam $PORT,
+# basta não definir nada — o valor da plataforma é respeitado.
+#
+# Regra de manutenção desta imagem: NUNCA coloque um comentário (`#`) no meio
+# de uma instrução que usa `\` para continuar na linha seguinte. O Docker
+# remove esses comentários, mas outros parsers de Dockerfile (linters, CI,
+# pre-flight de plataformas de deploy) tratam a linha como o fim da instrução
+# e reprovam o arquivo. Comentários vão SEMPRE acima da instrução.
 # =============================================================================
 FROM python:3.12-slim
 
@@ -33,24 +43,33 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    # servidor WSGI de produção (o `flask run` é só para desenvolvimento)
-    && pip install --no-cache-dir waitress
+
+# Dependências do projeto (versões fixadas em requirements.txt).
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Servidor WSGI de produção (o `flask run` é só para desenvolvimento).
+RUN pip install --no-cache-dir waitress
 
 COPY . .
 
-# Dados persistentes (banco + fotos). Monte um volume aqui!
+# Dados persistentes: banco SQLite + fotos ficam em /app/data.
+# O volume NÃO é declarado com `VOLUME` de propósito — quem monta é o operador
+# (Railway: Settings > Volumes apontando para /app/data; local:
+# `docker run -v "$PWD/data:/app/data"`). Sem volume montado, os dados vivem
+# apenas dentro do container e somem quando ele é recriado.
 ENV DATABASE_PATH=/app/data/database.db \
     STORAGE_FOLDER=/app/data/storage \
     HOST=0.0.0.0 \
     PORT=8080 \
     DEBUG=false
 
-VOLUME ["/app/data"]
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8080/healthz || exit 1
+    CMD curl -fsS "http://127.0.0.1:${PORT:-8080}/healthz" || exit 1
 
 # O modelo é carregado quando o `app` é importado (create_app).
-CMD ["waitress-serve", "--host=0.0.0.0", "--port=8080", "--threads=4", "app:app"]
+# `sh -c` é necessário para expandir `${PORT}` em tempo de execução (o exec form
+# do Dockerfile não passa por shell); o `exec` mantém o waitress como PID 1,
+# para receber SIGTERM no restart do container.
+CMD ["sh", "-c", "exec waitress-serve --host=0.0.0.0 --port=${PORT:-8080} --threads=4 app:app"]

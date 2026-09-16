@@ -179,6 +179,12 @@ O que o `Dockerfile` já resolve:
 | `/app/data` (volume) | banco SQLite + fotos. **Monte o volume**, senão tudo se perde ao recriar o container |
 | `waitress` | servidor WSGI de produção, em vez do servidor de desenvolvimento do Flask |
 | `HEALTHCHECK` | consulta `/healthz` a cada 30s |
+| `$PORT` | a aplicação escuta na porta da variável `PORT` (padrão 8080 se ela não existir), que é o que plataformas como o Railway esperam |
+
+> ⚠️ **Comentário dentro de instrução com `\` quebra o build em alguns parsers.** O Docker remove
+> linhas `#` antes de juntar as continuações, mas linters e o pre-flight de plataformas de deploy
+> param a instrução na linha comentada e reprovam o arquivo (sintoma: *"The Dockerfile failed
+> validation"* / `unknown instruction: &&`). Comentários vão **acima** da instrução, nunca no meio.
 
 > ⚠️ **Nunca instale `opencv-python` junto com `opencv-python-headless`**: os dois instalam o
 > mesmo pacote `cv2` e um sobrescreve o outro. Era exatamente esse o caso do erro
