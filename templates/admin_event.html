@@ -81,7 +81,8 @@
   <div class="photo-grid"
        id="photo-grid"
        data-delete-url="{{ url_for('admin_delete_photo', photo_id=0) }}"
-       data-reprocess-url="{{ url_for('admin_reprocess_photo', photo_id=0) }}">
+       data-reprocess-url="{{ url_for('admin_reprocess_photo', photo_id=0) }}"
+       data-download-url="{{ url_for('public_download_photo', slug=event['slug'], photo_id=0) }}">
 
     {% for photo in photos %}
       <figure class="photo-card" data-photo-id="{{ photo['id'] }}">
@@ -101,11 +102,18 @@
           {% if photo['raw_path'] %}<span class="raw-tag" title="Arquivo RAW original preservado">RAW</span>{% endif %}
         </figcaption>
         <div class="photo-actions">
-          {% if photo['raw_path'] %}
-            <a class="icon-btn" href="{{ storage_url(photo['raw_path']) }}" download title="Baixar o RAW original">⤓</a>
-          {% endif %}
           <button class="icon-btn js-reprocess-photo" type="button" data-photo-id="{{ photo['id'] }}" title="Reprocessar">↻</button>
           <button class="icon-btn icon-btn-danger js-delete-photo" type="button" data-photo-id="{{ photo['id'] }}" data-filename="{{ photo['filename'] }}" title="Excluir foto">🗑</button>
+        </div>
+        <div class="photo-download">
+          <a class="pill-download"
+             href="{{ url_for('public_download_photo', slug=event['slug'], photo_id=photo['id']) }}"
+             title="Baixar o arquivo original, sem redução de qualidade">⤓ Original</a>
+          {% if photo['raw_path'] %}
+            <a class="pill-download"
+               href="{{ url_for('public_download_photo', slug=event['slug'], photo_id=photo['id'], raw=1) }}"
+               title="Baixar o arquivo RAW original ({{ photo['raw_path'].rsplit('.', 1)[-1]|upper }})">⤓ RAW</a>
+          {% endif %}
         </div>
       </figure>
     {% endfor %}

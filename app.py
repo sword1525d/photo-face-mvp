@@ -25,6 +25,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     send_from_directory,
     url_for,
 )
@@ -34,6 +35,7 @@ from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 from config import Config, ensure_directories
 from services.archive_service import ArchiveService
 from services.database_service import DatabaseService
+from services.download_service import DownloadError, DownloadService
 from services.event_service import EventService, slugify
 from services.face_service import (
     STATUS_ERROR as FACE_STATUS_ERROR,
@@ -106,6 +108,14 @@ def create_app(load_model: bool | None = None) -> Flask:
         if Config.ALLOW_ARCHIVE_UPLOAD
         else None
     )
+    # Download dos originais: o visitante leva o arquivo original, e pode
+    # marcar várias fotos para receber tudo em um ZIP só.
+    download_service = DownloadService(
+        storage_root=Config.STORAGE_FOLDER,
+        temp_root=Config.TEMP_FOLDER,
+        max_files=Config.MAX_DOWNLOAD_PHOTOS,
+        max_total_bytes=Config.MAX_DOWNLOAD_BYTES,
+    )
     face_service = get_face_service()
     search_service = FaceSearchService(
         photo_service,
@@ -133,6 +143,7 @@ def create_app(load_model: bool | None = None) -> Flask:
         "photos": photo_service,
         "images": image_service,
         "archives": archive_service,
+        "downloads": download_service,
         "raw": raw_service,
         "face": face_service,
         "search": search_service,
@@ -454,6 +465,101 @@ def create_app(load_model: bool | None = None) -> Flask:
     def storage_file(relpath: str):
         # send_from_directory já protege contra path traversal.
         return send_from_directory(Config.STORAGE_FOLDER, relpath, max_age=86400)
+
+    # ------------------------------------------------------------------
+    # Download dos arquivos originais
+    # ------------------------------------------------------------------
+    def photos_of_event(event_id: int, raw_ids: list[str]) -> list:
+        """Converte os ids recebidos e descarta o que não é deste evento.
+
+        O download é público (como a busca), então o formulário nunca é
+        confiável: um id de outro evento é simplesmente ignorado, o que também
+        não confirma para quem tentou se aquele id existe.
+        """
+        ids: list[int] = []
+        for value in raw_ids:
+            for piece in str(value).split(","):
+                piece = piece.strip()
+                if not piece.isdigit():
+                    continue
+                photo_id = int(piece)
+                if photo_id not in ids:
+                    ids.append(photo_id)
+
+        photos = []
+        for photo_id in ids:
+            photo = photo_service.get(photo_id)
+            if photo is not None and int(photo["event_id"]) == event_id:
+                photos.append(photo)
+        return photos
+
+    @app.get("/evento/<slug>/foto/<int:photo_id>/baixar")
+    def public_download_photo(slug: str, photo_id: int):
+        """Baixa o arquivo ORIGINAL de uma foto (sem redução de qualidade).
+
+        Com ``?raw=1`` baixa o RAW preservado (``.nef`` e afins), quando existir.
+        """
+        event = get_event_by_slug_or_404(slug)
+        event_id = int(event["id"])
+        photo = photo_service.get(photo_id)
+        if photo is None or int(photo["event_id"]) != event_id:
+            abort(404)
+
+        prefer_raw = request.args.get("raw", "").strip().lower() in {"1", "true", "sim", "yes"}
+        try:
+            item = download_service.resolve(photo, prefer_raw=prefer_raw)
+        except DownloadError as exc:
+            return fail(str(exc), 404, "file_missing")
+
+        logger.info(
+            "Download event=%s foto=%s arquivo=%s %.1fKB%s",
+            event_id,
+            photo_id,
+            item.name,
+            item.size / 1024.0,
+            " (RAW)" if prefer_raw else "",
+        )
+        return send_file(item.path, as_attachment=True, download_name=item.name, max_age=0)
+
+    @app.post("/evento/<slug>/baixar")
+    def public_download_selection(slug: str):
+        """Baixa as fotos marcadas: uma foto vira um arquivo, várias viram ZIP."""
+        event = get_event_by_slug_or_404(slug)
+        photos = photos_of_event(int(event["id"]), request.form.getlist("ids"))
+        try:
+            files = download_service.collect(photos)
+        except DownloadError as exc:
+            return fail(str(exc), 400, "download_failed")
+
+        if len(files) == 1:
+            item = files[0]
+            logger.info(
+                "Download event=%s foto=%s arquivo=%s %.1fKB",
+                event["id"],
+                item.name,
+                item.size / 1024.0,
+            )
+            return send_file(item.path, as_attachment=True, download_name=item.name, max_age=0)
+
+        try:
+            archive_path = download_service.build_zip(files)
+        except DownloadError as exc:
+            return fail(str(exc), 500, "zip_failed")
+
+        download_name = f"{event['slug']}-{len(files)}-fotos.zip"
+        logger.info(
+            "Download event=%s %s foto(s) em %s (%.1f MB)",
+            event["id"],
+            len(files),
+            download_name,
+            archive_path.stat().st_size / (1024 * 1024),
+        )
+        response = send_file(
+            archive_path, as_attachment=True, download_name=download_name, max_age=0
+        )
+        # O ZIP é temporário: apaga assim que a resposta terminar de ser enviada.
+        response.call_on_close(lambda: download_service.cleanup(archive_path))
+        return response
 
     # ------------------------------------------------------------------
     # Administração

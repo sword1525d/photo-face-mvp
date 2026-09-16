@@ -869,6 +869,120 @@ textarea:focus {
   color: #ffb3ad;
 }
 
+/* ----------------------------- seleção e download dos arquivos originais */
+.download-form {
+  display: block;
+}
+
+/* Barra de ações do download. Fica DEPOIS da grade no HTML: assim o
+   `sticky` gruda no rodapé enquanto o usuário rola a galeria. */
+.download-bar {
+  position: sticky;
+  bottom: 0.75rem;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
+  flex-wrap: wrap;
+  margin-top: 1rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: rgba(11, 13, 16, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.download-hint {
+  margin: 0;
+  flex: 1 1 16rem;
+}
+
+.download-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Especificidade maior que o `.btn { width: 100% }` do bloco responsivo:
+   as ações do download continuam compactas no celular. */
+.download-bar-actions .btn {
+  width: auto;
+}
+
+.download-count {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.download-count strong {
+  color: var(--text);
+}
+
+/* Caixa de seleção sobre a prévia — sempre visível, porque no celular não
+   existe hover para revelar os botões do card. */
+.photo-select {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: rgba(11, 13, 16, 0.85);
+  cursor: pointer;
+}
+
+.photo-select input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.photo-card.is-selected {
+  border-color: var(--accent);
+}
+
+.photo-card.is-selected .photo-select {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Linha de download do card: o arquivo original e, quando a foto veio de um
+   RAW, também o RAW preservado. */
+.photo-download {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  padding: 0 0.65rem 0.6rem;
+}
+
+.pill-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: border-color 0.16s ease, color 0.16s ease;
+}
+
+.pill-download:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 /* ------------------------------------------------------ página evento */
 .event-hero {
   position: relative;

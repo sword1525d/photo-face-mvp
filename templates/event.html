@@ -18,6 +18,8 @@
 <section class="section"
          id="search-section"
          data-search-url="{{ url_for('public_event_search', slug=event['slug']) }}"
+         data-download-url="{{ url_for('public_download_selection', slug=event['slug']) }}"
+         data-photo-download-url="{{ url_for('public_download_photo', slug=event['slug'], photo_id=0) }}"
          data-show-similarity="{{ 'true' if show_similarity else 'false' }}">
 
   <div class="search-card">

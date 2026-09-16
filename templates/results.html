@@ -21,26 +21,54 @@
   </header>
 
   {% if results %}
-    <div class="photo-grid results" data-show-similarity="{{ 'true' if show_similarity else 'false' }}">
-      {% for item in results %}
-        <figure class="photo-card" data-photo-id="{{ item.photo_id }}">
-          <button class="photo-thumb" type="button"
-                  data-full="{{ storage_url(item.original_path) }}"
-                  data-caption="{{ item.filename }}">
-            {% if item.thumbnail_path %}
-              <img src="{{ storage_url(item.thumbnail_path) }}" alt="Foto {{ loop.index }}" loading="lazy">
-            {% else %}
-              <span class="thumb-fallback">sem prévia</span>
+    {# Formulário de verdade de propósito: as caixas de seleção enviam os ids e o
+       download funciona até sem JavaScript (o JS só melhora o contador). #}
+    <form class="download-form" method="post"
+          action="{{ url_for('public_download_selection', slug=event['slug']) }}">
+      <div class="photo-grid results" data-show-similarity="{{ 'true' if show_similarity else 'false' }}">
+        {% for item in results %}
+          <figure class="photo-card" data-photo-id="{{ item.photo_id }}">
+            <label class="photo-select" title="Selecionar para baixar">
+              <input type="checkbox" name="ids" value="{{ item.photo_id }}" class="js-photo-check"
+                     aria-label="Selecionar a foto {{ loop.index }}">
+            </label>
+            <button class="photo-thumb" type="button"
+                    data-full="{{ storage_url(item.original_path) }}"
+                    data-caption="{{ item.filename }}">
+              {% if item.thumbnail_path %}
+                <img src="{{ storage_url(item.thumbnail_path) }}" alt="Foto {{ loop.index }}" loading="lazy">
+              {% else %}
+                <span class="thumb-fallback">sem prévia</span>
+              {% endif %}
+            </button>
+            {% if show_similarity %}
+              <figcaption class="photo-meta">
+                <span class="similarity">{{ '%.1f'|format(item.similarity * 100) }}% de similaridade</span>
+              </figcaption>
             {% endif %}
-          </button>
-          {% if show_similarity %}
-            <figcaption class="photo-meta">
-              <span class="similarity">{{ '%.1f'|format(item.similarity * 100) }}% de similaridade</span>
-            </figcaption>
-          {% endif %}
-        </figure>
-      {% endfor %}
-    </div>
+            <div class="photo-download">
+              <a class="pill-download"
+                 href="{{ url_for('public_download_photo', slug=event['slug'], photo_id=item.photo_id) }}"
+                 title="Baixar o arquivo original, sem redução de qualidade">⤓ Original</a>
+            </div>
+          </figure>
+        {% endfor %}
+      </div>
+
+      {# A barra fica DEPOIS da grade: é o que faz o `position: sticky; bottom`
+         acompanhar a rolagem no celular. #}
+      <div class="download-bar">
+        <p class="muted small download-hint">
+          Baixe o <strong>arquivo original</strong>, sem redução de qualidade.
+          Marque as fotos que quiser levar de uma vez.
+        </p>
+        <div class="download-bar-actions">
+          <span class="download-count" hidden><strong class="js-selected-count">0</strong> selecionada(s)</span>
+          <button type="button" class="btn btn-ghost btn-sm js-select-all" hidden>Selecionar todas</button>
+          <button type="submit" class="btn btn-primary btn-sm">⤓ Baixar selecionadas</button>
+        </div>
+      </div>
+    </form>
   {% else %}
     <div class="empty-state">
       <h2>Não encontramos fotos correspondentes</h2>

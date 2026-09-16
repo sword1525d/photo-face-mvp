@@ -140,6 +140,104 @@
     });
   }
 
+  /* ----------------------------------------------- seleção e download */
+  // O arquivo é enviado pelo próprio servidor (Content-Disposition: attachment),
+  // então o navegador não precisa montar nada: basta um link (ou o POST do
+  // formulário, quando o usuário marcou várias fotos).
+
+  function downloadUrl(template, photoId) {
+    // O servidor manda o template com o id 0 (ex.: "/evento/x/foto/0/baixar").
+    return String(template || "").replace("/foto/0/", "/foto/" + photoId + "/");
+  }
+
+  function buildDownloadLinks(item, template) {
+    const row = document.createElement("div");
+    row.className = "photo-download";
+    const url = downloadUrl(template, item.photo_id);
+    if (!url) return row;
+
+    const original = document.createElement("a");
+    original.className = "pill-download";
+    original.href = url;
+    original.title = "Baixar o arquivo original, sem redução de qualidade";
+    original.textContent = "⤓ Original";
+    row.appendChild(original);
+
+    // Só aparece quando a foto veio de um RAW (.nef, .cr2…): aí o JPEG é o
+    // original legível e o RAW é o arquivo de verdade que ficou guardado.
+    if (item.raw_url) {
+      const raw = document.createElement("a");
+      raw.className = "pill-download";
+      raw.href = url + "?raw=1";
+      raw.title = "Baixar o arquivo RAW original";
+      raw.textContent = "⤓ RAW";
+      row.appendChild(raw);
+    }
+    return row;
+  }
+
+  function buildDownloadBar() {
+    const bar = document.createElement("div");
+    bar.className = "download-bar";
+    bar.innerHTML =
+      '<p class="muted small download-hint">Baixe o <strong>arquivo original</strong>, ' +
+      "sem redução de qualidade. Marque as fotos que quiser levar de uma vez.</p>" +
+      '<div class="download-bar-actions">' +
+      '<span class="download-count" hidden><strong class="js-selected-count">0</strong> selecionada(s)</span>' +
+      '<button type="button" class="btn btn-ghost btn-sm js-select-all" hidden>Selecionar todas</button>' +
+      '<button type="submit" class="btn btn-primary btn-sm">&#10515; Baixar selecionadas</button>' +
+      "</div>";
+    return bar;
+  }
+
+  // Sem JS o formulário continua funcionando (quem valida a seleção é o
+  // servidor, com mensagem amigável); com JS ganhamos contador, "selecionar
+  // todas" e o botão desabilitado enquanto nada está marcado.
+  function initDownloadForm(form) {
+    if (!form || form.dataset.downloadReady === "1") return;
+    form.dataset.downloadReady = "1";
+
+    const count = $(".download-count", form);
+    const counter = $(".js-selected-count", form);
+    const selectAll = $(".js-select-all", form);
+    const submit = $('[type="submit"]', form);
+
+    const refresh = () => {
+      const boxes = $$(".js-photo-check", form);
+      const checked = boxes.filter((box) => box.checked);
+      if (counter) counter.textContent = String(checked.length);
+      if (count) count.hidden = checked.length === 0;
+      if (selectAll) {
+        selectAll.hidden = boxes.length === 0;
+        selectAll.textContent =
+          checked.length === boxes.length ? "Limpar seleção" : "Selecionar todas";
+      }
+      if (submit) submit.disabled = checked.length === 0;
+      boxes.forEach((box) => {
+        const card = box.closest(".photo-card");
+        if (card) card.classList.toggle("is-selected", box.checked);
+      });
+    };
+
+    form.addEventListener("change", (event) => {
+      if (event.target.matches(".js-photo-check")) refresh();
+    });
+
+    selectAll?.addEventListener("click", () => {
+      const boxes = $$(".js-photo-check", form);
+      // Se já está tudo marcado, o botão funciona como "limpar seleção".
+      const checkAll = boxes.some((box) => !box.checked);
+      boxes.forEach((box) => (box.checked = checkAll));
+      refresh();
+    });
+
+    refresh();
+  }
+
+  function initDownloadForms(scope) {
+    $$(".download-form", scope).forEach(initDownloadForm);
+  }
+
   /* ------------------------------------------------------ upload em lote */
 
   // Formatos aceitos: imagens comuns (inclusive HEIC de celular), RAW de câmera
@@ -230,14 +328,11 @@
       const actions = document.createElement("div");
       actions.className = "photo-actions";
       actions.innerHTML =
-        (item.raw_url
-          ? '<a class="icon-btn" href="' + item.raw_url + '" download title="Baixar o RAW original">&#10515;</a>'
-          : "") +
         '<button class="icon-btn js-reprocess-photo" type="button" title="Reprocessar">&#8635;</button>' +
         '<button class="icon-btn icon-btn-danger js-delete-photo" type="button" title="Excluir foto">&#128465;</button>';
       $$("button", actions).forEach((button) => (button.dataset.photoId = item.photo_id));
 
-      figure.append(thumb, meta, actions);
+      figure.append(thumb, meta, buildDownloadLinks(item, grid?.dataset.downloadUrl), actions);
       return figure;
     };
 
@@ -611,12 +706,28 @@
         return;
       }
 
+      const form = document.createElement("form");
+      form.className = "download-form";
+      form.method = "post";
+      form.action = section.dataset.downloadUrl || "";
+
       const grid = document.createElement("div");
       grid.className = "photo-grid";
       data.results.forEach((item, index) => {
         const figure = document.createElement("figure");
         figure.className = "photo-card";
         figure.dataset.photoId = item.photo_id;
+
+        const select = document.createElement("label");
+        select.className = "photo-select";
+        select.title = "Selecionar para baixar";
+        const check = document.createElement("input");
+        check.type = "checkbox";
+        check.name = "ids";
+        check.value = item.photo_id;
+        check.className = "js-photo-check";
+        check.setAttribute("aria-label", "Selecionar a foto " + (index + 1));
+        select.appendChild(check);
 
         const thumb = document.createElement("button");
         thumb.type = "button";
@@ -628,7 +739,7 @@
         img.alt = "Foto " + (index + 1);
         img.loading = "lazy";
         thumb.appendChild(img);
-        figure.appendChild(thumb);
+        figure.append(select, thumb);
 
         if (showSimilarity) {
           const meta = document.createElement("figcaption");
@@ -640,9 +751,15 @@
           figure.appendChild(meta);
           console.debug("[photo-face] resultado", item.photo_id, "similaridade", item.similarity);
         }
+        figure.appendChild(buildDownloadLinks(item, section.dataset.photoDownloadUrl));
         grid.appendChild(figure);
       });
-      results.appendChild(grid);
+      form.appendChild(grid);
+      // A barra vem depois da grade de propósito: é o que faz o
+      // `position: sticky; bottom` acompanhar a rolagem.
+      form.appendChild(buildDownloadBar());
+      results.appendChild(form);
+      initDownloadForms(results);
     }
 
     // Progressive enhancement: sem JS o form faz POST normal e renderiza results.html.
@@ -665,6 +782,7 @@
     initPanels();
     initDestructiveActions();
     initLightbox();
+    initDownloadForms();
     initUploader();
     initSelfieSearch();
   });

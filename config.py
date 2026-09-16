@@ -123,6 +123,16 @@ class Config:
     MAX_ZIP_COMPRESSION_RATIO = _env_int("MAX_ZIP_COMPRESSION_RATIO", 200)
 
     # ------------------------------------------------------------------
+    # Download dos originais (o que o visitante leva do site)
+    # ------------------------------------------------------------------
+    # A busca e o download são públicos (sem login): os limites abaixo evitam
+    # que um único pedido encha o disco do container montando um ZIP gigante.
+    # Quantidade máxima de fotos em um download.
+    MAX_DOWNLOAD_PHOTOS = _env_int("MAX_DOWNLOAD_PHOTOS", 200)
+    # Tamanho total máximo (em bytes) dos arquivos de um download.
+    MAX_DOWNLOAD_BYTES = _env_int("MAX_DOWNLOAD_BYTES", 2 * 1024 * 1024 * 1024)  # 2 GB
+
+    # ------------------------------------------------------------------
     # Reconhecimento facial
     # ------------------------------------------------------------------
     INSIGHTFACE_MODEL = _env_str("INSIGHTFACE_MODEL", "buffalo_l")
