@@ -262,13 +262,25 @@ def main() -> int:
 
     print("[7/7] Templates renderizam os botões de download")
     admin_page = client.get(f"/admin/event/{event_id}")
+    admin_html = admin_page.get_data(as_text=True)
+    admin_page.close()
     check("painel responde 200", admin_page.status_code == 200, f"-> {admin_page.status_code}")
-    check("painel tem o botão Original", "⤓ Original" in admin_page.get_data(as_text=True))
-    check("painel tem o botão RAW", "⤓ RAW" in admin_page.get_data(as_text=True))
+    check("painel tem o botão do original", 'aria-label="Baixar o arquivo original"' in admin_html)
+    check("painel tem o botão do RAW", 'aria-label="Baixar o arquivo RAW original"' in admin_html)
+    check(
+        "o RAW tem a classe que o celular esconde",
+        'class="pill-download is-raw"' in admin_html,
+    )
+    check(
+        "o texto do botão está em um elemento próprio (o celular esconde só ele)",
+        'class="pill-label"' in admin_html,
+    )
 
     public_page = client.get(f"/evento/{slug}")
+    public_html = public_page.get_data(as_text=True)
+    public_page.close()
     check("página do evento responde 200", public_page.status_code == 200, f"-> {public_page.status_code}")
-    check("página do evento expõe as URLs de download", "data-download-url" in public_page.get_data(as_text=True))
+    check("página do evento expõe as URLs de download", "data-download-url" in public_html)
 
     with application.test_request_context():
         html = render_template(

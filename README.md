@@ -39,7 +39,8 @@ UPLOAD DAS FOTOS -> DETECÇÃO DOS ROSTOS -> EMBEDDINGS -> BANCO
 - Mensagens claras para "nenhum rosto identificado" e "envie uma selfie com apenas uma pessoa".
 - Galeria com grid responsivo (4–5 colunas no desktop, 2 no mobile) e lightbox (imagem ampliada).
 - **Download do arquivo original** (sem redução de qualidade) em cada foto, e **seleção de
-  várias fotos** para baixar tudo de uma vez em um único `.zip`.
+  várias fotos** para baixar tudo de uma vez em um único `.zip`. No celular o download
+  aparece como um **ícone** no card (a opção de RAW fica só no desktop/painel).
 
 **Privacidade**
 

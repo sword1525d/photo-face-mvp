@@ -150,6 +150,15 @@
     return String(template || "").replace("/foto/0/", "/foto/" + photoId + "/");
   }
 
+  function pillLabel(text) {
+    // O rótulo é um elemento próprio porque no celular o CSS o esconde e o
+    // botão fica só com o ícone (aí quem nomeia o link é o aria-label).
+    const span = document.createElement("span");
+    span.className = "pill-label";
+    span.textContent = text;
+    return span;
+  }
+
   function buildDownloadLinks(item, template) {
     const row = document.createElement("div");
     row.className = "photo-download";
@@ -160,17 +169,20 @@
     original.className = "pill-download";
     original.href = url;
     original.title = "Baixar o arquivo original, sem redução de qualidade";
-    original.textContent = "⤓ Original";
+    original.setAttribute("aria-label", "Baixar o arquivo original");
+    original.append("⤓", pillLabel("Original"));
     row.appendChild(original);
 
     // Só aparece quando a foto veio de um RAW (.nef, .cr2…): aí o JPEG é o
     // original legível e o RAW é o arquivo de verdade que ficou guardado.
+    // (No celular o CSS esconde esta opção: são dezenas de MB por foto.)
     if (item.raw_url) {
       const raw = document.createElement("a");
-      raw.className = "pill-download";
+      raw.className = "pill-download is-raw";
       raw.href = url + "?raw=1";
       raw.title = "Baixar o arquivo RAW original";
-      raw.textContent = "⤓ RAW";
+      raw.setAttribute("aria-label", "Baixar o arquivo RAW original");
+      raw.append("⤓", pillLabel("RAW"));
       row.appendChild(raw);
     }
     return row;
