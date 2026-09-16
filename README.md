@@ -24,7 +24,8 @@ UPLOAD DAS FOTOS -> DETECÇÃO DOS ROSTOS -> EMBEDDINGS -> BANCO
 - **Upload de ZIP** com dezenas de fotos: o arquivo é descompactado e cada foto entra na fila
   (pastas internas são achatadas e arquivos inválidos são reportados, sem derrubar o envio).
 - **Aceita RAW de câmera (`.NEF` e equivalentes)**: o RAW é convertido para JPEG para exibição
-  e o **arquivo original é preservado**, baixável na galeria do painel (`⤓ Original` e `⤓ RAW`).
+  e o **arquivo original é preservado** — e é ele que o download entrega (na galeria do painel
+  ficam `⤓ Original`, que é o `.nef`, e `⤓ JPEG`, o derivado leve).
 - **Aceita HEIC/HEIF** (fotos de iPhone e de vários Android) e valida todo arquivo pelo
   **conteúdo real**, não pela extensão — um arquivo renomeado funciona e um arquivo inválido
   recebe uma explicação do que ele é de verdade.
@@ -38,9 +39,10 @@ UPLOAD DAS FOTOS -> DETECÇÃO DOS ROSTOS -> EMBEDDINGS -> BANCO
 - Envio de selfie com **consentimento obrigatório**.
 - Mensagens claras para "nenhum rosto identificado" e "envie uma selfie com apenas uma pessoa".
 - Galeria com grid responsivo (4–5 colunas no desktop, 2 no mobile) e lightbox (imagem ampliada).
-- **Download do arquivo original** (sem redução de qualidade) em cada foto, e **seleção de
-  várias fotos** para baixar tudo de uma vez em um único `.zip`. No celular o download
-  aparece como um **ícone** no card (a opção de RAW fica só no desktop/painel).
+- **Download do arquivo original** em cada foto: o que foi enviado e, no caso de RAW, o próprio
+  **`.nef`**, byte a byte (nada é recomprimido no caminho). Também dá para **selecionar várias
+  fotos** e baixar tudo de uma vez em um único `.zip`. No celular o download aparece como um
+  **ícone** no card (o botão do JPEG derivado fica só no desktop/painel).
 
 **Privacidade**
 
@@ -267,9 +269,10 @@ O sistema resolve isso em duas etapas:
    resolução total). Nada de dependência extra — funciona sempre.
 
 O JPEG gerado passa a ser a imagem exibida (galeria, lightbox e detecção de rostos) e o
-**`.nef` original fica guardado** ao lado, com os botões `⤓ Original` (o JPEG em tamanho cheio)
-e `⤓ RAW` (o `.nef` de verdade) na galeria do painel e a etiqueta `RAW` no card. A busca
-pública entrega o **JPEG em tamanho cheio** — quem quer o RAW usa o painel.
+**`.nef` original fica guardado** ao lado, com a etiqueta `RAW` no card. **O download entrega
+o `.nef`** (e, na busca por várias fotos, ele entra no ZIP do mesmo jeito: inteiro, sem
+recompressão). O JPEG é só para a tela — para baixá-lo existe o botão `⤓ JPEG` (`?legivel=1`)
+na galeria do painel, útil para mandar a foto sem puxar dezenas de MB.
 Ao excluir a foto, os dois arquivos são removidos.
 
 ---
@@ -440,7 +443,7 @@ $env:FACE_SIMILARITY_THRESHOLD="0.38"; $env:DEBUG="false"; python app.py
 | POST | `/admin/event/<id>/delete` | exclui o evento e todas as fotos |
 | GET | `/evento/<slug>` | página pública do evento |
 | POST | `/evento/<slug>/search` | busca pela selfie (JSON ou HTML) |
-| GET | `/evento/<slug>/foto/<id>/baixar` | baixa o **arquivo original** da foto (`?raw=1` baixa o RAW preservado) |
+| GET | `/evento/<slug>/foto/<id>/baixar` | baixa o **arquivo original** (o `.nef` quando a foto veio de RAW). `?legivel=1` baixa o JPEG gerado |
 | POST | `/evento/<slug>/baixar` | baixa as fotos marcadas (`ids`): 1 vira arquivo, 2+ viram `.zip` |
 | GET | `/storage/<path>` | serve originais e thumbnails |
 | GET | `/healthz` | status do banco, do motor facial e do threshold |

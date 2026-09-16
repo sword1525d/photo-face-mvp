@@ -1285,10 +1285,10 @@ textarea:focus {
     opacity: 1;
   }
 
-  /* No celular o download vira UM ícone (sem texto, alvo de toque de 40px) e a
-     opção de RAW desaparece: são dezenas de MB por foto, coisa de fotógrafo —
-     quem está no telefone quer a foto, no original, com um toque. O nome
-     acessível continua vindo do aria-label, já que o rótulo visual sai. */
+  /* No celular o download vira UM ícone (sem texto, alvo de toque de 40px) e o
+     botão do JPEG gerado desaparece: quem está no telefone quer o arquivo
+     original, com um toque. O nome acessível continua vindo do aria-label, já
+     que o rótulo visual sai. */
   .photo-download {
     gap: 0;
     padding: 0 0.5rem 0.55rem;
@@ -1303,7 +1303,7 @@ textarea:focus {
   }
 
   .pill-download .pill-label,
-  .pill-download.is-raw {
+  .pill-download.is-jpeg {
     display: none;
   }
 

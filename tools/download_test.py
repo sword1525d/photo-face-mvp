@@ -7,10 +7,11 @@ Flask com banco, storage e temporários **próprios** (o ``database.db`` e a pas
 ``storage/`` do projeto não são tocados). Confere:
 
 * a foto baixada é o ARQUIVO ORIGINAL, byte a byte — nunca o thumbnail;
+* foto vinda de RAW baixa o **próprio `.nef`** (sem recompressão no caminho),
+  e o JPEG gerado fica como opção (`?legivel=1`);
 * o nome sugerido no download é o nome que o fotógrafo deu ao arquivo;
 * seleção com várias fotos vira um ZIP com os originais intactos e nomes
   repetidos viram ``foto.jpg`` / ``foto-1.jpg``;
-* o RAW preservado (``.nef``) só sai quando pedido com ``?raw=1``;
 * seleção vazia, id de outro evento e arquivo ausente devolvem erro amigável;
 * os templates do resultado e do painel renderizam os botões de download.
 
@@ -167,16 +168,30 @@ def main() -> int:
     )
     check("a segunda foto também veio inteira", download_b["body"] == jpeg_b)
 
-    print("[4/7] RAW: o JPEG é o original legível, o .nef é opt-in")
+    print("[4/7] RAW: o download entrega o próprio .nef (o JPEG é opcional)")
     raw_default = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar")
-    raw_explicit = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar?raw=1")
-    check("sem ?raw=1 vem o JPEG (nome .jpg)", raw_default["body"] == jpeg_from_raw)
-    check("nome do arquivo sem ?raw=1", "DSC_0042.jpg" in raw_default["headers"].get("Content-Disposition", ""))
-    check("com ?raw=1 vem o .nef preservado", raw_explicit["body"] == nef_bytes)
+    raw_alias = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar?raw=1")
+    derived = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar?legivel=1")
+    check("sem parâmetro vem o .nef (arquivo da câmera)", raw_default["body"] == nef_bytes)
     check(
-        "nome do arquivo com ?raw=1",
-        "DSC_0042.nef" in raw_explicit["headers"].get("Content-Disposition", ""),
+        "o nome do arquivo sai com .nef",
+        "DSC_0042.nef" in raw_default["headers"].get("Content-Disposition", ""),
     )
+    check("?raw=1 continua valendo (o RAW já é o padrão)", raw_alias["body"] == nef_bytes)
+    check("?legivel=1 dá o JPEG gerado a partir do RAW", derived["body"] == jpeg_from_raw)
+    check(
+        "e o nome do derivado sai com .jpg",
+        "DSC_0042.jpg" in derived["headers"].get("Content-Disposition", ""),
+    )
+
+    # Se o .nef sumiu do disco, o download cai para o arquivo legível em vez de
+    # quebrar — e a extensão entregue denuncia o que veio.
+    raw_file = originals / "raw-foto.nef"
+    raw_file.unlink()
+    fallback = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar")
+    check("sem o .nef no disco, entrega o legível em vez de falhar", fallback["body"] == jpeg_from_raw)
+    check("e o nome sai com .jpg", "DSC_0042.jpg" in fallback["headers"].get("Content-Disposition", ""))
+    raw_file.write_bytes(nef_bytes)
 
     print("[5/7] Download de VÁRIAS fotos (ZIP)")
     response_zip = call("POST", f"/evento/{slug}/baixar", data={"ids": [str(photo_a), str(photo_b), str(photo_raw)]})
@@ -193,7 +208,7 @@ def main() -> int:
             check("nome repetido foi desambiguado", len(set(names)) == 3)
             check("ordem preservada (primeira foto)", archive.read(names[0]) == jpeg_a)
             check("ordem preservada (segunda foto)", archive.read(names[1]) == jpeg_b)
-            check("a foto do RAW entrou como .jpg", archive.read(names[2]) == jpeg_from_raw)
+            check("a foto do RAW entrou como .nef intacto", archive.read(names[2]) == nef_bytes)
             check(
                 "dentro do zip nada foi recomprimido",
                 {item.compress_type for item in archive.infolist()} == {zipfile.ZIP_STORED},
@@ -266,10 +281,14 @@ def main() -> int:
     admin_page.close()
     check("painel responde 200", admin_page.status_code == 200, f"-> {admin_page.status_code}")
     check("painel tem o botão do original", 'aria-label="Baixar o arquivo original"' in admin_html)
-    check("painel tem o botão do RAW", 'aria-label="Baixar o arquivo RAW original"' in admin_html)
     check(
-        "o RAW tem a classe que o celular esconde",
-        'class="pill-download is-raw"' in admin_html,
+        "painel tem o botão do JPEG gerado (para foto de RAW)",
+        'aria-label="Baixar o JPEG gerado a partir do RAW"' in admin_html,
+    )
+    check("o botão do JPEG aponta para ?legivel=1", "legivel=1" in admin_html)
+    check(
+        "o JPEG tem a classe que o celular esconde",
+        'class="pill-download is-jpeg"' in admin_html,
     )
     check(
         "o texto do botão está em um elemento próprio (o celular esconde só ele)",

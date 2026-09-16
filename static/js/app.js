@@ -173,17 +173,17 @@
     original.append("⤓", pillLabel("Original"));
     row.appendChild(original);
 
-    // Só aparece quando a foto veio de um RAW (.nef, .cr2…): aí o JPEG é o
-    // original legível e o RAW é o arquivo de verdade que ficou guardado.
-    // (No celular o CSS esconde esta opção: são dezenas de MB por foto.)
+    // Foto vinda de RAW: o download principal já é o `.nef`; este botão extra
+    // entrega o JPEG gerado dele, para quem quer algo leve para compartilhar.
+    // (No celular o CSS esconde esta opção: lá interessa só o original.)
     if (item.raw_url) {
-      const raw = document.createElement("a");
-      raw.className = "pill-download is-raw";
-      raw.href = url + "?raw=1";
-      raw.title = "Baixar o arquivo RAW original";
-      raw.setAttribute("aria-label", "Baixar o arquivo RAW original");
-      raw.append("⤓", pillLabel("RAW"));
-      row.appendChild(raw);
+      const jpeg = document.createElement("a");
+      jpeg.className = "pill-download is-jpeg";
+      jpeg.href = url + "?legivel=1";
+      jpeg.title = "Baixar o JPEG gerado a partir do RAW";
+      jpeg.setAttribute("aria-label", "Baixar o JPEG gerado a partir do RAW");
+      jpeg.append("⤓", pillLabel("JPEG"));
+      row.appendChild(jpeg);
     }
     return row;
   }

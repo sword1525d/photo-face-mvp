@@ -1,13 +1,17 @@
 """Download dos arquivos originais das fotos (individual ou em ZIP).
 
-Regra de qualidade: o que o usuário baixa é o **arquivo original** gravado no
-storage (``photos.original_path``) — byte a byte, sem redimensionar, recortar
-ou recomprimir. O thumbnail de 500px existe só para a prévia na tela.
+Regra de qualidade: o que o usuário baixa é o **arquivo original** — byte a
+byte, sem redimensionar, recortar ou recomprimir. O thumbnail de 500px existe
+só para a prévia na tela.
 
-Para fotos que vieram de RAW (``.nef``, ``.cr2`` …) o "original legível" é o
-JPEG gerado na importação (``original_path``); o arquivo RAW de verdade fica em
-``photos.raw_path`` e só é baixado quando alguém pede isso explicitamente
-(``prefer_raw=True``), porque são dezenas de MB por foto.
+Para fotos que vieram de RAW (``.nef``, ``.cr2`` …) o original é o **próprio
+RAW**: é ele que sai no download por padrão (``prefer_raw=True``), porque é o
+arquivo como saiu da câmera. O JPEG gerado na importação existe para a tela
+(galeria, lightbox, detecção) e só é baixado quando alguém pede isso
+explicitamente (``prefer_raw=False``), porque é um derivado.
+
+Nada aqui recompacta arquivo: o ZIP usa ``ZIP_STORED``, ou seja, o RAW dentro
+do ZIP é idêntico ao que está no disco.
 
 Este módulo não conhece banco de dados nem Flask: recebe as linhas de
 ``photos`` já filtradas e devolve caminhos prontos para envio.
@@ -77,25 +81,36 @@ class DownloadService:
     # ------------------------------------------------------------------
     # Resolução dos arquivos
     # ------------------------------------------------------------------
-    def resolve(self, photo_row, prefer_raw: bool = False) -> DownloadFile:
-        """Devolve o arquivo original de uma foto (ou o RAW, se pedido)."""
-        relative = None
-        if prefer_raw and "raw_path" in photo_row.keys():
-            relative = photo_row["raw_path"]
-        if not relative:
-            relative = photo_row["original_path"]
-        if not relative:
+    def resolve(self, photo_row, prefer_raw: bool = True) -> DownloadFile:
+        """Devolve o arquivo mais original que existir para a foto.
+
+        Com ``prefer_raw=True`` (padrão) o RAW preservado (``.nef``) tem
+        prioridade. Se ele não existir no disco — ou a foto não vier de RAW —
+        vale o original legível (o que foi enviado, ou o JPEG gerado do RAW).
+        """
+        candidates: list[str] = []
+        if prefer_raw and "raw_path" in photo_row.keys() and photo_row["raw_path"]:
+            candidates.append(photo_row["raw_path"])
+        if photo_row["original_path"]:
+            candidates.append(photo_row["original_path"])
+        if not candidates:
             raise DownloadError("Esta foto não tem arquivo disponível para download.")
 
-        path = (self.storage_root / relative).resolve()
-        if not path.is_file():
+        for relative in candidates:
+            path = (self.storage_root / relative).resolve()
+            if path.is_file():
+                return DownloadFile(
+                    path=path,
+                    name=self._download_name(photo_row, path),
+                    size=path.stat().st_size,
+                )
             logger.warning("Arquivo de download ausente no disco: %s", path)
-            raise DownloadError(
-                "O arquivo original desta foto não está mais disponível no servidor."
-            )
-        return DownloadFile(path=path, name=self._download_name(photo_row, path), size=path.stat().st_size)
 
-    def collect(self, photo_rows: Iterable, prefer_raw: bool = False) -> list[DownloadFile]:
+        raise DownloadError(
+            "O arquivo original desta foto não está mais disponível no servidor."
+        )
+
+    def collect(self, photo_rows: Iterable, prefer_raw: bool = True) -> list[DownloadFile]:
         """Resolve vários arquivos aplicando os limites de quantidade/tamanho."""
         rows = list(photo_rows)
         if not rows:
@@ -124,8 +139,8 @@ class DownloadService:
         """Nome amigável para o arquivo baixado.
 
         Usa o nome que o fotógrafo deu ao arquivo (``photos.filename``), mas com
-        a extensão do arquivo **real**: o RAW vira ``.jpg`` depois da conversão,
-        então ``DSC_1.nef`` baixado como original chama-se ``DSC_1.jpg``.
+        a extensão do arquivo **real** que está sendo enviado: quem baixa o RAW
+        recebe ``DSC_1.nef``, quem baixa o derivado recebe ``DSC_1.jpg``.
         """
         reference = str(photo_row["filename"] or "").replace("\\", "/")
         stem = PurePosixPath(reference).stem.strip() or path.stem

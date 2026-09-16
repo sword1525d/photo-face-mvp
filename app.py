@@ -496,9 +496,12 @@ def create_app(load_model: bool | None = None) -> Flask:
 
     @app.get("/evento/<slug>/foto/<int:photo_id>/baixar")
     def public_download_photo(slug: str, photo_id: int):
-        """Baixa o arquivo ORIGINAL de uma foto (sem redução de qualidade).
+        """Baixa o ARQUIVO ORIGINAL de uma foto, sem recompressão.
 
-        Com ``?raw=1`` baixa o RAW preservado (``.nef`` e afins), quando existir.
+        Para foto vinda de RAW isso é o próprio ``.nef`` (o arquivo como saiu da
+        câmera). ``?legivel=1`` pede o JPEG gerado a partir do RAW — útil para
+        mandar a foto sem baixar dezenas de MB. ``?raw=1`` continua válido (o
+        RAW já é o padrão).
         """
         event = get_event_by_slug_or_404(slug)
         event_id = int(event["id"])
@@ -506,9 +509,9 @@ def create_app(load_model: bool | None = None) -> Flask:
         if photo is None or int(photo["event_id"]) != event_id:
             abort(404)
 
-        prefer_raw = request.args.get("raw", "").strip().lower() in {"1", "true", "sim", "yes"}
+        quer_legivel = request.args.get("legivel", "").strip().lower() in {"1", "true", "sim", "yes"}
         try:
-            item = download_service.resolve(photo, prefer_raw=prefer_raw)
+            item = download_service.resolve(photo, prefer_raw=not quer_legivel)
         except DownloadError as exc:
             return fail(str(exc), 404, "file_missing")
 
@@ -518,13 +521,18 @@ def create_app(load_model: bool | None = None) -> Flask:
             photo_id,
             item.name,
             item.size / 1024.0,
-            " (RAW)" if prefer_raw else "",
+            " (derivado)" if quer_legivel else "",
         )
         return send_file(item.path, as_attachment=True, download_name=item.name, max_age=0)
 
     @app.post("/evento/<slug>/baixar")
     def public_download_selection(slug: str):
-        """Baixa as fotos marcadas: uma foto vira um arquivo, várias viram ZIP."""
+        """Baixa as fotos marcadas: uma foto vira um arquivo, várias viram ZIP.
+
+        O ZIP leva o mesmo arquivo que o link individual: o original de cada
+        foto (o ``.nef`` inteiro, quando a foto veio de RAW) guardado **sem
+        compressão** (``ZIP_STORED``), então nada é recompactado no caminho.
+        """
         event = get_event_by_slug_or_404(slug)
         photos = photos_of_event(int(event["id"]), request.form.getlist("ids"))
         try:
