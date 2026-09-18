@@ -6,6 +6,7 @@ tratamento de erros. Toda a lógica de negócio mora em ``services/``.
 
 from __future__ import annotations
 
+import hmac
 import logging
 import mimetypes
 import os
@@ -28,10 +29,12 @@ from flask import (
     request,
     send_file,
     send_from_directory,
+    session,
     url_for,
 )
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import Config, ensure_directories
 from services.archive_service import ArchiveService
@@ -135,6 +138,10 @@ def create_app(load_model: bool | None = None) -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
     app.config["MAX_CONTENT_LENGTH"] = Config.MAX_CONTENT_LENGTH
+    # O app roda atrás do proxy do Railway: sem isto o `request.remote_addr`
+    # seria o IP do proxy (todos os visitantes no mesmo balde do freio de
+    # senha) e o `url_for` externo sairia com o esquema errado.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     # Em desenvolvimento os arquivos estáticos devem ser revalidados a cada
     # requisição; em produção podem ficar em cache por 1 hora.
     app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0 if Config.DEBUG else 3600
@@ -247,8 +254,6 @@ def create_app(load_model: bool | None = None) -> Flask:
             )
         except Exception as exc:
             logger.exception("Falha ao detectar rostos photo=%s", photo_id)
-            # Guarda o motivo real (ex.: libGL faltando no container) para o admin
-            # entender por que a foto ficou aguardando.
             reason = (str(exc) or face_service.load_error or "Não foi possível processar esta imagem.")[:300]
             photo_service.set_status(
                 photo_id,
@@ -296,11 +301,6 @@ def create_app(load_model: bool | None = None) -> Flask:
         return photo_payload(photo, saved, origin=origin), 200
 
     def reprocess_photo(photo_row) -> dict:
-        """Roda a detecção novamente em uma foto já gravada.
-
-        Usado pelo botão de reprocessar de um card e pelo botão "reprocessar
-        pendentes" (útil quando o motor facial estava indisponível no upload).
-        """
         photo_id = int(photo_row["id"])
         event_id = int(photo_row["event_id"])
         try:
@@ -336,6 +336,87 @@ def create_app(load_model: bool | None = None) -> Flask:
         if event_row and not event_row["cover_path"]:
             event_service.set_cover(event_id, photo_row["thumbnail_path"])
         return photo_payload(photo_service.get(photo_id))
+
+    # ------------------------------------------------------------------
+    # Painel: senha única
+    # ------------------------------------------------------------------
+    # Tentativas erradas ficam em memória (o app é um processo só). Um freio é
+    # obrigatório aqui: uma senha de 6 dígitos tem apenas 1 milhão de
+    # combinações, então sem limite um robô acharia em minutos.
+    failed_logins: dict[str, tuple[int, float]] = {}
+    LOGIN_MAX_ATTEMPTS = 5
+    LOGIN_BLOCK_SECONDS = 300
+
+    def login_block_seconds(ip: str) -> int:
+        attempts, last = failed_logins.get(ip, (0, 0.0))
+        if attempts < LOGIN_MAX_ATTEMPTS:
+            return 0
+        return max(0, int(LOGIN_BLOCK_SECONDS - (time.time() - last)))
+
+    def safe_next(value: str | None) -> str:
+        """Só aceita voltar para dentro do painel (evita redirecionar para fora)."""
+        if not value or not value.startswith("/admin") or value.startswith("//"):
+            return url_for("admin_index")
+        return value
+
+    @app.route("/admin/login", methods=["GET", "POST"])
+    def admin_login():
+        """Entrada no painel (a página pública do evento não passa por aqui)."""
+        target = safe_next(request.values.get("next"))
+        if session.get("admin"):
+            return redirect(target)
+
+        ip = request.remote_addr or "?"
+        blocked = login_block_seconds(ip)
+        if request.method == "POST":
+            if blocked:
+                return render_template("admin_login.html", next=target, blocked=blocked), 429
+
+            password = request.form.get("password", "")
+            # compare_digest: não entrega o tamanho/posição do acerto pelo tempo.
+            if hmac.compare_digest(password, Config.ADMIN_PASSWORD):
+                failed_logins.pop(ip, None)
+                session["admin"] = True
+                logger.info("Painel: acesso liberado (ip=%s)", ip)
+                return redirect(target)
+
+            attempts, _last = failed_logins.get(ip, (0, 0.0))
+            failed_logins[ip] = (attempts + 1, time.time())
+            logger.warning("Painel: senha incorreta (ip=%s, tentativa %s)", ip, attempts + 1)
+            flash("Senha incorreta.", "error")
+            blocked = login_block_seconds(ip)
+
+        return render_template("admin_login.html", next=target, blocked=blocked)
+
+    @app.get("/admin/logout")
+    def admin_logout():
+        session.pop("admin", None)
+        flash("Sessão encerrada.", "success")
+        return redirect(url_for("index"))
+
+    @app.before_request
+    def protect_admin_area():
+        """Tudo em /admin exige a senha; o resto do site continua público.
+
+        Fica num `before_request` (e não em decorador por rota) para que uma
+        rota nova em /admin nasça protegida, sem depender de alguém lembrar.
+        """
+        if not request.path.startswith("/admin"):
+            return None
+        if request.endpoint == "admin_login" or session.get("admin"):
+            return None
+        if wants_json():
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": "Faça login no painel para continuar.",
+                        "error_code": "unauthorized",
+                    }
+                ),
+                401,
+            )
+        return redirect(url_for("admin_login", next=request.full_path))
 
     # ------------------------------------------------------------------
     # Rotas públicas
@@ -404,9 +485,6 @@ def create_app(load_model: bool | None = None) -> Flask:
             ) as temp_file:
                 temp_path = Path(temp_file.name)
                 selfie.save(str(temp_path))
-
-            # A extensão enviada não é confiável (celular manda .heic, às vezes
-            # renomeado): validamos o CONTEÚDO antes de gastar tempo no modelo.
             try:
                 detected_format = image_service.inspect_image(temp_path)
             except ImageValidationError as exc:

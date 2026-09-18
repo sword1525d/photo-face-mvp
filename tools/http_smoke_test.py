@@ -14,6 +14,7 @@ Use ``--keep`` para não apagar o evento criado ao final.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -34,11 +35,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Testa o fluxo completo via HTTP.")
     parser.add_argument("--base-url", default="http://127.0.0.1:5000")
     parser.add_argument("--keep", action="store_true", help="Não remove o evento no final.")
+    parser.add_argument(
+        "--password", default="", help="Senha do painel (padrão: ADMIN_PASSWORD ou 264079)."
+    )
     args = parser.parse_args()
 
     base = args.base_url.rstrip("/")
     session = requests.Session()
     json_headers = {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}
+
+    # O painel pede senha (o site público não). Sem entrar, os passos de
+    # administração cairiam na tela de login e o teste falharia com um erro
+    # enganoso lá na frente.
+    password = args.password or os.environ.get("ADMIN_PASSWORD", "264079")
+    login = session.post(f"{base}/admin/login", data={"password": password}, timeout=30)
+    if "/admin/login" in login.url:
+        fail("não consegui entrar no painel — a senha mudou? (use --password ou ADMIN_PASSWORD)")
 
     print(f"[1/7] GET {base}/healthz")
     health = session.get(f"{base}/healthz", timeout=30).json()

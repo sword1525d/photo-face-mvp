@@ -9,7 +9,9 @@
     <p>{{ message }}</p>
     <div class="form-actions">
       <a class="btn btn-primary" href="{{ url_for('index') }}">Voltar ao início</a>
-      <a class="btn btn-ghost" href="{{ url_for('admin_index') }}">Ir para o painel</a>
+      {% if session.get('admin') %}
+        <a class="btn btn-ghost" href="{{ url_for('admin_index') }}">Ir para o painel</a>
+      {% endif %}
     </div>
   </div>
 </section>

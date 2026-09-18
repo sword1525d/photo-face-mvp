@@ -16,6 +16,7 @@ cria um NEF sintético (container TIFF com preview JPEG embutido) e confere:
 
 from __future__ import annotations
 
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -75,6 +76,17 @@ def main() -> int:
     base = parser_base.rstrip("/")
     session = requests.Session()
     json_headers = {"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"}
+
+    # O painel pede senha (o site público não). Sem entrar, os uploads cairiam
+    # na tela de login e o teste falharia com um erro enganoso lá na frente.
+    login = session.post(
+        f"{base}/admin/login",
+        data={"password": os.environ.get("ADMIN_PASSWORD", "264079")},
+        timeout=30,
+    )
+    if "/admin/login" in login.url:
+        print("Não consegui entrar no painel — a senha mudou? Use ADMIN_PASSWORD=<senha>.")
+        return 1
 
     work = WORK_DIR
     work.mkdir(parents=True, exist_ok=True)

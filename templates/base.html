@@ -17,7 +17,12 @@
     </a>
     <nav class="topbar-nav">
       <a href="{{ url_for('index') }}">Eventos</a>
-      <a href="{{ url_for('admin_index') }}">Painel</a>
+      {% if session.get('admin') %}
+        {# O atalho do painel só existe para quem já entrou com a senha:
+           o visitante comum (quem só procura as fotos) não vê nada disso. #}
+        <a href="{{ url_for('admin_index') }}">Painel</a>
+        <a href="{{ url_for('admin_logout') }}">Sair</a>
+      {% endif %}
     </nav>
   </header>
 

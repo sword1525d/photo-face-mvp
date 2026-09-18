@@ -13,7 +13,8 @@ Flask com banco, storage e temporários **próprios** (o ``database.db`` e a pas
 * seleção com várias fotos vira um ZIP com os originais intactos e nomes
   repetidos viram ``foto.jpg`` / ``foto-1.jpg``;
 * seleção vazia, id de outro evento e arquivo ausente devolvem erro amigável;
-* os templates do resultado e do painel renderizam os botões de download.
+* os templates do resultado e do painel renderizam os botões de download;
+* o painel exige senha (o site público não) e o login tem freio de tentativas.
 
 Use ``--keep`` para não apagar a pasta temporária (útil para inspecionar os
 arquivos gerados).
@@ -76,6 +77,7 @@ def main() -> int:
     from flask import render_template
 
     from app import create_app
+    from config import Config
     from services.photo_service import STATUS_PROCESSED
     from services.search_service import SearchResult
 
@@ -84,7 +86,55 @@ def main() -> int:
     services = application.extensions["services"]
     events, photos, images = services["events"], services["photos"], services["images"]
 
-    print(f"[1/7] Preparando evento sintético em {WORK_DIR}")
+    def call(method: str, path: str, **kwargs) -> dict:
+        """Faz a requisição e FECHA a resposta.
+
+        Fechar importa no Windows: o arquivo enviado fica travado até a
+        resposta ser fechada, e é no fim da requisição que o ZIP temporário é
+        apagado (``after_this_request``)."""
+        response = client.open(path, method=method, **kwargs)
+        reply = {
+            "status": response.status_code,
+            "headers": dict(response.headers),
+            "body": response.data,
+            "json": response.get_json(silent=True),
+        }
+        response.close()
+        return reply
+
+    print("[1/8] Senha do painel (a página pública continua aberta)")
+    gate = call("GET", "/admin")
+    check(
+        "sem sessão, o painel manda para o login",
+        gate["status"] == 302 and "/admin/login" in gate["headers"].get("Location", ""),
+        f"-> {gate['status']} {gate['headers'].get('Location', '')}",
+    )
+    denied = call("POST", "/admin/event/create", data={"name": "Sem senha"}, headers=JSON_HEADERS)
+    check(
+        "criar evento sem sessão é recusado (401 para JSON)",
+        denied["status"] == 401,
+        f"-> {denied['status']} {denied['json']}",
+    )
+    check(
+        "upload sem sessão também é recusado",
+        call("POST", "/admin/event/1/upload", data={}, headers=JSON_HEADERS)["status"] == 401,
+    )
+    check("a página pública segue aberta", call("GET", "/")["status"] == 200)
+
+    wrong = call("POST", "/admin/login", data={"password": "000000"})
+    check(
+        "senha errada não abre o painel",
+        wrong["status"] == 200 and call("GET", "/admin")["status"] == 302,
+    )
+    right = call("POST", "/admin/login", data={"password": Config.ADMIN_PASSWORD})
+    check(
+        "senha certa entra no painel",
+        right["status"] == 302 and "/admin" in right["headers"].get("Location", ""),
+        f"-> {right['status']} {right['headers'].get('Location', '')}",
+    )
+    check("e o painel passa a responder 200", call("GET", "/admin")["status"] == 200)
+
+    print(f"[2/8] Preparando evento sintético em {WORK_DIR}")
     event = events.create("Teste de download", "Evento sintético dos testes")
     event_id, slug = int(event["id"]), event["slug"]
 
@@ -106,23 +156,6 @@ def main() -> int:
         response.close()
         return int(results[0]["photo_id"])
 
-    def call(method: str, path: str, **kwargs) -> dict:
-        """Faz a requisição e FECHA a resposta.
-
-        Fechar importa por dois motivos no Windows: o arquivo enviado fica
-        travado até a resposta ser fechada, e é no fechamento que o ZIP
-        temporário é apagado (``response.call_on_close``).
-        """
-        response = client.open(path, method=method, **kwargs)
-        reply = {
-            "status": response.status_code,
-            "headers": dict(response.headers),
-            "body": response.data,
-            "json": response.get_json(silent=True),
-        }
-        response.close()
-        return reply
-
     # Duas fotos com o MESMO nome (para testar nome repetido dentro do ZIP) e um
     # arquivo que ficou pendente de processamento facial.
     photo_a = upload("CORRIDA 01.JPG", jpeg_a)
@@ -133,7 +166,7 @@ def main() -> int:
 
     # Caso RAW: gravado direto no storage (a conversão em si é testada no
     # tools/zip_raw_test.py, e aqui não dependemos do rawpy instalado).
-    print("[2/7] Criando uma foto vinda de RAW…")
+    print("[3/8] Criando uma foto vinda de RAW…")
     originals = images.storage_root / "events" / str(event_id) / "originals"
     thumbnails = images.storage_root / "events" / str(event_id) / "thumbnails"
     (originals / "raw-foto.jpg").write_bytes(jpeg_from_raw)
@@ -148,7 +181,7 @@ def main() -> int:
         raw_path=f"events/{event_id}/originals/raw-foto.nef",
     )
 
-    print("[3/7] Download de UMA foto (arquivo original, byte a byte)")
+    print("[4/8] Download de UMA foto (arquivo original, byte a byte)")
     check("HTTP 200", download_a["status"] == 200, f"-> {download_a['status']}")
     check(
         "conteúdo idêntico ao enviado",
@@ -168,7 +201,7 @@ def main() -> int:
     )
     check("a segunda foto também veio inteira", download_b["body"] == jpeg_b)
 
-    print("[4/7] RAW: o download entrega o próprio .nef (o JPEG é opcional)")
+    print("[5/8] RAW: o download entrega o próprio .nef (o JPEG é opcional)")
     raw_default = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar")
     raw_alias = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar?raw=1")
     derived = call("GET", f"/evento/{slug}/foto/{photo_raw}/baixar?legivel=1")
@@ -193,7 +226,7 @@ def main() -> int:
     check("e o nome sai com .jpg", "DSC_0042.jpg" in fallback["headers"].get("Content-Disposition", ""))
     raw_file.write_bytes(nef_bytes)
 
-    print("[5/7] Download de VÁRIAS fotos (ZIP)")
+    print("[6/8] Download de VÁRIAS fotos (ZIP)")
     response_zip = call("POST", f"/evento/{slug}/baixar", data={"ids": [str(photo_a), str(photo_b), str(photo_raw)]})
     check("HTTP 200", response_zip["status"] == 200, f"-> {response_zip['status']}")
     check("mime de zip", response_zip["headers"].get("Content-Type") == "application/zip")
@@ -240,7 +273,7 @@ def main() -> int:
         and single["headers"].get("Content-Type", "").startswith("image/jpeg"),
     )
 
-    print("[6/7] Erros devem ser amigáveis (nada de traceback / 500)")
+    print("[7/8] Erros devem ser amigáveis (nada de traceback / 500)")
     empty = call("POST", f"/evento/{slug}/baixar", data={}, headers=JSON_HEADERS)
     check(
         "sem seleção -> 400 com mensagem",
@@ -275,7 +308,7 @@ def main() -> int:
     )
     original_file.write_bytes(jpeg_a)
 
-    print("[7/7] Templates renderizam os botões de download")
+    print("[8/8] Templates renderizam os botões de download")
     admin_page = client.get(f"/admin/event/{event_id}")
     admin_html = admin_page.get_data(as_text=True)
     admin_page.close()
@@ -321,6 +354,19 @@ def main() -> int:
     check("resultado (sem JS) tem a caixa de seleção", 'class="js-photo-check"' in html)
     check("resultado (sem JS) tem o formulário de download", 'class="download-form"' in html)
     check("resultado (sem JS) tem o link do original", f"/evento/{slug}/foto/{photo_a}/baixar" in html)
+
+    # Freio do login: com 6 dígitos, tentativa e erro é viável (1 milhão de
+    # combinações), então depois de 5 erros o IP espera antes de tentar de novo.
+    throttle = application.test_client()
+    for _ in range(5):
+        throttle.post("/admin/login", data={"password": "000000"})
+    paused = throttle.post("/admin/login", data={"password": Config.ADMIN_PASSWORD})
+    check(
+        "o freio bloqueia o login depois de 5 tentativas erradas",
+        paused.status_code == 429,
+        f"-> {paused.status_code}",
+    )
+    paused.close()
 
     print()
     print("RESULTADO:", "tudo certo" if ok else "houve falha")

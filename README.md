@@ -19,6 +19,9 @@ UPLOAD DAS FOTOS -> DETECÇÃO DOS ROSTOS -> EMBEDDINGS -> BANCO
 
 **Administrador**
 
+- **Painel com senha** (padrão `264079`, trocável por `ADMIN_PASSWORD`): o atalho do painel só
+  aparece depois de entrar e **toda** a rota `/admin/*` exige a sessão. O site público do evento
+  continua aberto para o visitante.
 - Criar eventos (o *slug* é gerado automaticamente: `Corrida Manaus 2026` → `corrida-manaus-2026`).
 - Upload de várias fotos de uma vez, com **drag and drop** e **barra de progresso**.
 - **Upload de ZIP** com dezenas de fotos: o arquivo é descompactado e cada foto entra na fila
@@ -204,7 +207,9 @@ Se o container subir mas o motor facial não carregar, o painel mostra o motivo 
 
 ## 5. Como usar (roteiro do primeiro teste)
 
-1. `python app.py` e abra http://localhost:5000/admin
+1. `python app.py` e abra http://localhost:5000/admin — o painel pede a senha (`264079`, ou o que
+   estiver em `ADMIN_PASSWORD`). Depois de entrar, o atalho **Painel** aparece no topo; **Sair**
+   encerra a sessão.
 2. Clique em **+ Novo evento** → nome `Corrida Manaus 2026` → **Criar evento**.
 3. Na tela do evento, **arraste dezenas de fotos** para a área de upload (ou clique em
    "Selecionar arquivos"). O progresso aparece em tempo real e cada foto entra na galeria
@@ -380,7 +385,8 @@ Tudo pode ser sobrescrito por variável de ambiente (útil para produção):
 
 | Config | Padrão | Descrição |
 | --- | --- | --- |
-| `SECRET_KEY` | `photo-face-mvp-dev-secret-change-me` | **troque em produção** |
+| `SECRET_KEY` | `photo-face-mvp-dev-secret-change-me` | **troque em produção** (assina o cookie de sessão do painel) |
+| `ADMIN_PASSWORD` | `264079` | senha do painel (**troque em produção**) |
 | `DEBUG` | `True` | em `True` mostra a similaridade (%) nos resultados |
 | `HOST` / `PORT` | `0.0.0.0` / `5000` | endereço do servidor |
 | `DATABASE_PATH` | `./database.db` | arquivo SQLite |
@@ -434,6 +440,9 @@ $env:FACE_SIMILARITY_THRESHOLD="0.38"; $env:DEBUG="false"; python app.py
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | GET | `/` | página inicial com os eventos publicados |
+| GET | `/admin/login` | tela de entrada do painel |
+| POST | `/admin/login` | confere a senha (`ADMIN_PASSWORD`) e abre a sessão |
+| GET | `/admin/logout` | encerra a sessão e volta para a página inicial |
 | GET | `/admin` | painel: lista de eventos + criar evento |
 | POST | `/admin/event/create` | cria o evento (slug automático) |
 | GET | `/admin/event/<id>` | painel do evento (estatísticas, upload, galeria) |
@@ -447,6 +456,12 @@ $env:FACE_SIMILARITY_THRESHOLD="0.38"; $env:DEBUG="false"; python app.py
 | POST | `/evento/<slug>/baixar` | baixa as fotos marcadas (`ids`): 1 vira arquivo, 2+ viram `.zip` |
 | GET | `/storage/<path>` | serve originais e thumbnails |
 | GET | `/healthz` | status do banco, do motor facial e do threshold |
+
+> **Só o `/admin` é protegido:** tudo que começa com `/admin` (inclusive upload, exclusão e
+> reprocessamento) exige a sessão criada em `/admin/login`. As rotas públicas do evento e o
+> download dos originais continuam abertos, senão o visitante não conseguiria pegar as fotos.
+> Requisições JSON (`X-Requested-With: XMLHttpRequest`) sem sessão recebem `401`, em vez de um
+> redirect — assim o JavaScript do painel mostra "faça login" em vez de baixar HTML.
 
 ---
 
@@ -502,6 +517,12 @@ método e injetá-la — nenhuma rota precisa mudar.
   (não confirma nem nega a existência da foto). O ZIP é montado em `storage/tmp` com
   `ZIP_STORED` (nenhuma recompressão: os bytes saem idênticos ao original) e apagado logo
   depois do envio, com faxina de sobras antigas a cada novo download.
+- **Senha do painel:** comparação com `hmac.compare_digest` (não vaza o acerto pelo tempo),
+  5 tentativas erradas por IP bloqueiam o login por 5 minutos (`429`) e cada erro vai para o
+  log com o IP. É uma senha única (não há cadastro de usuários) — então **defina `SECRET_KEY`
+  em produção**: com a chave padrão do repositório, alguém poderia forjar o cookie de sessão
+  e entrar sem a senha. O `ProxyFix` é o que faz o freio usar o IP real do visitante atrás do
+  proxy do Railway.
 - Limite de tamanho por requisição (`MAX_CONTENT_LENGTH`) e por selfie (`MAX_SELFIE_LENGTH`).
 - Erros devolvem mensagens amigáveis ("Não foi possível processar esta imagem.") — nunca
   traceback para o usuário (o traceback fica no log).

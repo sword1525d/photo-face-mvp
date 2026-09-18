@@ -58,6 +58,11 @@ class Config:
     # Flask
     # ------------------------------------------------------------------
     SECRET_KEY = _env_str("SECRET_KEY", "photo-face-mvp-dev-secret-change-me")
+    # Senha única do painel (o app não tem cadastro de usuários: é um
+    # administrador só). Serve para criar eventos e enviar fotos — a página
+    # pública do evento continua aberta para o visitante.
+    # Em produção, troque pelas variáveis de ambiente: SECRET_KEY e ADMIN_PASSWORD.
+    ADMIN_PASSWORD = _env_str("ADMIN_PASSWORD", "264079")
     DEBUG = _env_bool("DEBUG", True)
     HOST = _env_str("HOST", "0.0.0.0")
     PORT = _env_int("PORT", 5000)

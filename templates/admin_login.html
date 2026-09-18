@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Entrar no painel · {{ app_name }}{% endblock %}
+
+{% block content %}
+<section class="section">
+  <header class="section-head">
+    <div>
+      <p class="eyebrow">Administração</p>
+      <h1>Entrar no painel</h1>
+      <p class="muted small">
+        Área do organizador — criar eventos, enviar fotos e baixar os originais.
+        A página pública do evento continua aberta para os visitantes.
+      </p>
+    </div>
+    <a class="btn btn-ghost" href="{{ url_for('index') }}">← Ver eventos</a>
+  </header>
+
+  <div class="panel">
+    {% if blocked %}
+      <div class="alert alert-error" role="alert">
+        Muitas tentativas erradas. Tente novamente em
+        {{ blocked }} segundo{{ '' if blocked == 1 else 's' }}.
+      </div>
+    {% endif %}
+
+    <form class="form-grid" method="post" action="{{ url_for('admin_login') }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label class="field field-full">
+        <span>Senha do painel</span>
+        <input type="password" name="password" required autofocus
+               autocomplete="current-password" inputmode="numeric" placeholder="••••••">
+      </label>
+      <div class="field field-full form-actions">
+        <button class="btn btn-primary" type="submit">Entrar</button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}
